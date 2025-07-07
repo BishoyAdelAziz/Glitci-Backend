@@ -1,0 +1,875 @@
+openapi: 3.0.3
+info:
+  title: Glitci Software Project Tracker API
+  version: 1.0.0
+  description: |
+    RESTful backend that powers Glitci Software’s internal project-tracking platform.
+    The service handles authentication, project and finance management, employee
+    records, service catalogs, and advanced financial analytics.
+  termsOfService: https://glitci.com/terms
+  contact:
+    name: Glitci Software
+    email: api-support@glitci.com
+    url: https://glitci.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000
+    description: Local development
+  - url: https://api.glitci.com
+    description: Production
+
+tags:
+  - name: Auth
+    description: User registration, login, password management
+  - name: Projects
+    description: Project CRUD, installments, and per-project financials
+  - name: Employees
+    description: Manage company employees
+  - name: Services
+    description: Manage billable service catalog
+  - name: Finance
+    description: Portfolio-wide analytics and payment history
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http                # RFC 7235 HTTP authentication[14]
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained via **/api/auth/login** or **/api/auth/register**.
+        Send as `Authorization: Bearer <token>`. Each protected operation below
+        declares **bearerAuth** in its security requirement.
+    refreshCookie:
+      type: apiKey              # Cookie-based “API key” token[3]
+      in: cookie
+      name: refreshToken
+      description: |
+        HttpOnly refresh token automatically issued as a `Set-Cookie` header at
+        login/registration. Used by **/api/auth/refresh** to mint a new JWT.
+  schemas:
+    # ---------- Primitive, reusable sub-schemas ----------
+    Id:
+      type: string
+      description: MongoDB ObjectId as 24-character hex
+      example: 64ea9d35b64758231e4e6e53
+
+    Phone:
+      type: string
+      pattern: '^[0-9]{10,15}$'
+      example: "201060734567"
+
+    Monetary:
+      type: number
+      format: double
+      minimum: 0
+      example: 7500
+
+    PercentageString:
+      type: string
+      pattern: '^[0-9]+(\\.[0-9]{1,2})?%$'
+      example: "73.45%"
+
+    # ---------- Top-level domain models ----------
+    User:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+          example: "Sara Youssef"
+        email:
+          type: string
+          format: email
+          example: "sara@glitci.com"
+        role:
+          type: string
+          enum: [admin, manager, employee]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Employee:
+      type: object
+      required: [id, name, email, position, department]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phones:
+          type: array
+          items:
+            $ref: '#/components/schemas/Phone'
+        position:
+          type: string
+          example: "Backend Engineer"
+        department:
+          type: string
+          enum: [development, design, marketing, management]
+        skills:
+          type: array
+          items:
+            type: string
+        hourlyRate:
+          $ref: '#/components/schemas/Monetary'
+        availability:
+          type: string
+          enum: [available, busy, on_leave]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Service:
+      type: object
+      required: [id, name, category]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+          example: "Website Development"
+        category:
+          type: string
+          enum: [software, marketing]
+        description:
+          type: string
+        basePrice:
+          $ref: '#/components/schemas/Monetary'
+        estimatedHours:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Client:
+      type: object
+      required: [id, name, companyName, email]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+        companyName:
+          type: string
+        email:
+          type: string
+          format: email
+        phones:
+          type: array
+          items:
+            $ref: '#/components/schemas/Phone'
+        address:
+          type: object
+          properties:
+            street: { type: string }
+            city: { type: string }
+            state: { type: string }
+            zipCode: { type: string }
+            country: { type: string }
+        industry:
+          type: string
+        notes:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Installment:
+      type: object
+      required: [method, amount]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        method:
+          type: string
+          enum: [cash, bank_transfer, check, card]
+        amount:
+          $ref: '#/components/schemas/Monetary'
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+
+    Project:
+      type: object
+      required:
+        [id, projectName, employees, budget, deposit, client, services, status]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        projectName:
+          type: string
+        employees:
+          type: array
+          items:
+            type: object
+            required: [employee]
+            properties:
+              employee:
+                $ref: '#/components/schemas/Employee'
+              role:
+                type: string
+                example: "Lead Developer"
+              hourlyRate:
+                $ref: '#/components/schemas/Monetary'
+              assignedAt:
+                type: string
+                format: date-time
+        budget:
+          $ref: '#/components/schemas/Monetary'
+        deposit:
+          $ref: '#/components/schemas/Monetary'
+        installments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Installment'
+        totalPaid:
+          $ref: '#/components/schemas/Monetary'
+        completionRate:
+          $ref: '#/components/schemas/PercentageString'
+        client:
+          $ref: '#/components/schemas/Client'
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/Service'
+        status:
+          type: string
+          enum: [planning, in_progress, completed, cancelled]
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        deliverables:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+paths:
+  # --------------------------------------------------------------------------
+  #  AUTHENTICATION
+  # --------------------------------------------------------------------------
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, format: password, minLength: 6 }
+                role: { type: string, enum: [admin, manager, employee] }
+      responses:
+        '201':
+          description: User registered and tokens issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+                  accessToken: { type: string }
+      security: []    # Public
+
+  /api/auth/login:
+    get:
+      tags: [Auth]
+      summary: Login and obtain JWT + refresh cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Successful login
+          headers:
+            Set-Cookie:
+              description: HttpOnly refresh token cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+                  accessToken: { type: string }
+      security: []    # Public
+
+  /api/auth/change-password:
+    patch:
+      tags: [Auth]
+      summary: Change current user password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword: { type: string, format: password, minLength: 6 }
+      responses:
+        '200':
+          description: Password updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+      security:
+        - bearerAuth: []
+
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Send password-reset email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200':
+          description: Reset email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+      security: []
+
+  /api/auth/reset-password/{resettoken}:
+    parameters:
+      - in: path
+        name: resettoken
+        required: true
+        schema:
+          type: string
+    put:
+      tags: [Auth]
+      summary: Complete password reset using token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, format: password, minLength: 6 }
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+      security: []
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh JWT using HttpOnly cookie
+      responses:
+        '200':
+          description: New access token issued
+          headers:
+            Set-Cookie:
+              description: Rotated refreshToken
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+      security:
+        - refreshCookie: []
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout and revoke refresh token
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+      security:
+        - bearerAuth: []
+
+  # --------------------------------------------------------------------------
+  #  PROJECTS
+  # --------------------------------------------------------------------------
+  /api/projects:
+    get:
+      tags: [Projects]
+      summary: List all projects
+      responses:
+        '200':
+          description: Array of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+      security:
+        - bearerAuth: []
+    post:
+      tags: [Projects]
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Project'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Project' }
+      security:
+        - bearerAuth: []
+
+  /api/projects/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { $ref: '#/components/schemas/Id' }
+    get:
+      tags: [Projects]
+      summary: Get project by ID
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Project' }
+      security:
+        - bearerAuth: []
+    put:
+      tags: [Projects]
+      summary: Update project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Project'
+      responses:
+        '200':
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Project' }
+      security:
+        - bearerAuth: []
+    delete:
+      tags: [Projects]
+      summary: Delete (hard or soft) a project
+      responses:
+        '200':
+          description: Project deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+      security:
+        - bearerAuth: []
+
+  /api/projects/{id}/installments:
+    post:
+      tags: [Projects]
+      summary: Add installment to project
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Installment'
+      responses:
+        '200':
+          description: Installment added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Project' }
+      security:
+        - bearerAuth: []
+
+  /api/projects/{id}/financials:
+    get:
+      tags: [Projects]
+      summary: Financial breakdown for a single project
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: Detailed financial metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      budget: { $ref: '#/components/schemas/Monetary' }
+                      deposit: { $ref: '#/components/schemas/Monetary' }
+                      installments:
+                        type: array
+                        items: { $ref: '#/components/schemas/Installment' }
+                      totalPaid: { $ref: '#/components/schemas/Monetary' }
+                      remainingAmount: { $ref: '#/components/schemas/Monetary' }
+                      completionPercentage: { $ref: '#/components/schemas/PercentageString' }
+                      paymentHistory:
+                        type: array
+                        items:
+                          type: object
+      security:
+        - bearerAuth: []
+
+  # --------------------------------------------------------------------------
+  #  EMPLOYEES
+  # --------------------------------------------------------------------------
+  /api/employees:
+    get:
+      tags: [Employees]
+      summary: List active employees
+      responses:
+        '200':
+          description: Employee list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Employee' }
+      security:
+        - bearerAuth: []
+    post:
+      tags: [Employees]
+      summary: Create employee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Employee'
+      responses:
+        '201':
+          description: Employee created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Employee' }
+      security:
+        - bearerAuth: []
+
+  /api/employees/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { $ref: '#/components/schemas/Id' }
+    get:
+      tags: [Employees]
+      summary: Get employee by ID
+      responses:
+        '200':
+          description: Employee details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Employee' }
+      security:
+        - bearerAuth: []
+    patch:
+      tags: [Employees]
+      summary: Update employee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Employee'
+      responses:
+        '200':
+          description: Employee updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Employee' }
+      security:
+        - bearerAuth: []
+    delete:
+      tags: [Employees]
+      summary: Soft-delete employee (set **isActive** false)
+      responses:
+        '200':
+          description: Employee deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+      security:
+        - bearerAuth: []
+
+  # --------------------------------------------------------------------------
+  #  SERVICES
+  # --------------------------------------------------------------------------
+  /api/services:
+    get:
+      tags: [Services]
+      summary: List active services
+      responses:
+        '200':
+          description: Service list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Service' }
+      security:
+        - bearerAuth: []
+    post:
+      tags: [Services]
+      summary: Create service
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Service'
+      responses:
+        '201':
+          description: Service created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Service' }
+      security:
+        - bearerAuth: []
+
+  /api/services/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { $ref: '#/components/schemas/Id' }
+    put:
+      tags: [Services]
+      summary: Update service
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Service'
+      responses:
+        '200':
+          description: Service updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Service' }
+      security:
+        - bearerAuth: []
+    delete:
+      tags: [Services]
+      summary: Soft-delete service
+      responses:
+        '200':
+          description: Service deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+      security:
+        - bearerAuth: []
+
+  # --------------------------------------------------------------------------
+  #  FINANCE
+  # --------------------------------------------------------------------------
+  /api/finance/analytics:
+    get:
+      tags: [Finance]
+      summary: Portfolio-wide analytics dashboard
+      responses:
+        '200':
+          description: Consolidated metrics
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearerAuth: []
+
+  /api/finance/services/{category}:
+    parameters:
+      - in: path
+        name: category
+        required: true
+        schema:
+          type: string
+          enum: [software, marketing]
+    get:
+      tags: [Finance]
+      summary: Service-specific analytics
+      responses:
+        '200':
+          description: Analytics for service category
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearerAuth: []
+
+  /api/finance/payments:
+    get:
+      tags: [Finance]
+      summary: Consolidated payment history
+      parameters:
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: projectId
+          schema:
+            $ref: '#/components/schemas/Id'
+      responses:
+        '200':
+          description: Payments with optional filtering
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearerAuth: []
+
+security:
+  - bearerAuth: []        # Default requirement; public endpoints override as needed
