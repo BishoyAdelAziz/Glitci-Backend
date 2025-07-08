@@ -27,14 +27,17 @@ const employeeSchema = new mongoose.Schema(
         },
       },
     ],
-    position: {
-      type: String,
-      required: true,
-    },
     department: {
       type: String,
-      enum: ["development", "design", "marketing", "management"],
       required: true,
+      lowercase: true,
+      trim: true,
+    },
+    role: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
     },
     skills: [String],
     availability: {

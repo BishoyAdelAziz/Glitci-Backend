@@ -1,6 +1,6 @@
 const asyncHandler = require("express-async-handler");
 const Employee = require("../models/Employee");
-
+const department = require("../models/Departments.js");
 // @desc    Get all employees
 // @route   GET /api/employees
 // @access  Private
@@ -34,7 +34,28 @@ const getEmployee = asyncHandler(async (req, res) => {
 // @route   POST /api/employees
 // @access  Private (Manager/Admin)
 const createEmployee = asyncHandler(async (req, res) => {
-  const employee = await Employee.create(req.body);
+  const { department, position } = req.body;
+
+  // Normalize inputs (optional, depending on frontend)
+  const deptName = department.toLowerCase().trim();
+  const roleName = position.toLowerCase().trim();
+
+  // Find or create department and role
+  let dept = await Department.findOne({ name: deptName });
+  if (!dept) {
+    dept = new Department({ name: deptName, roles: [roleName] });
+    await dept.save();
+  } else if (!dept.roles.includes(roleName)) {
+    dept.roles.push(roleName);
+    await dept.save();
+  }
+
+  // Create employee with normalized department and position
+  const employee = await Employee.create({
+    ...req.body,
+    department: deptName,
+    position: roleName,
+  });
 
   res.status(201).json({
     success: true,
@@ -50,6 +71,25 @@ const updateEmployee = asyncHandler(async (req, res) => {
 
   if (!employee) {
     return res.status(404).json({ message: "Employee not found" });
+  }
+
+  const { department, position } = req.body;
+
+  if (department && position) {
+    const deptName = department.toLowerCase().trim();
+    const roleName = position.toLowerCase().trim();
+
+    let dept = await Department.findOne({ name: deptName });
+    if (!dept) {
+      dept = new Department({ name: deptName, roles: [roleName] });
+      await dept.save();
+    } else if (!dept.roles.includes(roleName)) {
+      dept.roles.push(roleName);
+      await dept.save();
+    }
+
+    req.body.department = deptName;
+    req.body.position = roleName;
   }
 
   employee = await Employee.findByIdAndUpdate(req.params.id, req.body, {
