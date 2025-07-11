@@ -12,6 +12,8 @@ const projectRoutes = require("./src/routes/projects");
 const employeeRoutes = require("./src/routes/employees");
 const serviceRoutes = require("./src/routes/services");
 const financeRoutes = require("./src/routes/finance");
+
+const departments = require("./src/routes/departments");
 const errorHandler = require("./src/middleware/errorHandler");
 const swaggerUi = require("swagger-ui-express");
 const YAML = require("yamljs");
@@ -56,7 +58,7 @@ app.use("/api/projects", projectRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/finance", financeRoutes);
-
+app.use("/api/departments", departments);
 // Error handling middleware
 app.use(errorHandler);
 

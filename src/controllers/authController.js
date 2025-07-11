@@ -17,6 +17,21 @@ const generateTokens = (userId) => {
 
   return { accessToken, refreshToken };
 };
+// @desc    Get current user
+// @route   GET /api/auth/me
+// @access  Private
+const getCurrentUser = asyncHandler(async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ message: "Not authorized" });
+  }
+  // Use serialId as id if you want sequential
+  const userObj = req.user.toObject();
+  userObj.id = userObj._id; // or userObj.serialId if you add that to User model
+  delete userObj._id;
+  delete userObj.password;
+  delete userObj.__v;
+  res.json({ success: true, data: userObj });
+});
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -274,4 +289,5 @@ module.exports = {
   resetPassword,
   refreshAccessToken,
   logout,
+  getCurrentUser,
 };

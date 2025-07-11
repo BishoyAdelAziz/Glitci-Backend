@@ -11,9 +11,7 @@ const departmentSchema = new mongoose.Schema(
     },
     roles: [{ type: String, lowercase: true, trim: true }],
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 module.exports =

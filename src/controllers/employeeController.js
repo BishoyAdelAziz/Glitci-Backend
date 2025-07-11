@@ -1,15 +1,27 @@
 const asyncHandler = require("express-async-handler");
 const Employee = require("../models/Employee");
-const department = require("../models/Departments.js");
-// @desc    Get all employees
+const Department = require("../models/Departments.js"); // Fix capitalization
+
+// @desc    Get all employees with pagination
 // @route   GET /api/employees
 // @access  Private
 const getEmployees = asyncHandler(async (req, res) => {
-  const employees = await Employee.find({ isActive: true }).sort({ name: 1 });
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const skip = (page - 1) * limit;
+
+  // Fetch employees with pagination
+  const [employees, total] = await Promise.all([
+    Employee.find({ isActive: true }).sort({ name: 1 }).skip(skip).limit(limit),
+    Employee.countDocuments({ isActive: true }),
+  ]);
 
   res.json({
     success: true,
     count: employees.length,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
     data: employees,
   });
 });
@@ -36,7 +48,7 @@ const getEmployee = asyncHandler(async (req, res) => {
 const createEmployee = asyncHandler(async (req, res) => {
   const { department, position } = req.body;
 
-  // Normalize inputs (optional, depending on frontend)
+  // Normalize inputs
   const deptName = department.toLowerCase().trim();
   const roleName = position.toLowerCase().trim();
 

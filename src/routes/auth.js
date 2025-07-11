@@ -7,6 +7,7 @@ const {
   resetPassword,
   refreshAccessToken,
   logout,
+  getCurrentUser,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/auth");
 const {
@@ -16,9 +17,9 @@ const {
 } = require("../middleware/validation");
 
 const router = express.Router();
-
+router.get("/me", protect, getCurrentUser);
 router.post("/register", validateRegister, register);
-router.get("/login", validateLogin, login);
+router.post("/login", validateLogin, login);
 router.patch(
   "/change-password",
   protect,

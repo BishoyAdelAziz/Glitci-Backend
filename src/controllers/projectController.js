@@ -4,16 +4,24 @@ const Employee = require("../models/Employee");
 const Service = require("../models/Service");
 const Client = require("../models/Client");
 
-// @desc    Get all projects
-// @route   GET /api/projects
-// @access  Private
 const getProjects = asyncHandler(async (req, res) => {
-  const projects = await Project.find()
-    .populate("employees.employee", "name email")
-    .populate("client", "name companyName email")
-    .populate("services", "name category")
-    .sort({ createdAt: -1 });
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const skip = (page - 1) * limit;
 
+  // Fetch paginated projects with population
+  const [projects, total] = await Promise.all([
+    Project.find()
+      .populate("employees.employee", "name email")
+      .populate("client", "name companyName email")
+      .populate("services", "name category")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Project.countDocuments(),
+  ]);
+
+  // Add calculated fields
   const projectsWithCalculations = projects.map((project) => {
     const projectObj = project.toObject();
     projectObj.totalPaid = project.totalPaid;
@@ -23,7 +31,10 @@ const getProjects = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    count: projects.length,
+    count: projectsWithCalculations.length,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
     data: projectsWithCalculations,
   });
 });
@@ -231,6 +242,84 @@ const getProjectFinancials = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Get total count of all projects
+// @route   GET /api/projects/total-count
+// @access  Private
+const getTotalProjectsCount = asyncHandler(async (req, res) => {
+  const totalCount = await Project.countDocuments();
+  res.json({ success: true, totalCount });
+});
+
+// @desc    Get total revenue from all projects (sum of budgets)
+// @route   GET /api/projects/total-revenue
+// @access  Private
+const getTotalProjectsRevenue = asyncHandler(async (req, res) => {
+  const result = await Project.aggregate([
+    {
+      $group: {
+        _id: null,
+        totalRevenue: { $sum: "$budget" },
+      },
+    },
+  ]);
+
+  const totalRevenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+  res.json({ success: true, totalRevenue });
+});
+
+// @desc    Get total expenses from all projects (sum of totalPaid = deposit + installments)
+// @route   GET /api/projects/total-expenses
+// @access  Private
+const getTotalProjectsExpenses = asyncHandler(async (req, res) => {
+  // We need to sum deposit + installments.amount for all projects
+
+  // Use aggregation pipeline to unwind installments and sum amounts
+  const result = await Project.aggregate([
+    {
+      $unwind: {
+        path: "$installments",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $group: {
+        _id: "$_id",
+        deposit: { $first: "$deposit" },
+        installmentsSum: { $sum: { $ifNull: ["$installments.amount", 0] } },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalExpenses: { $sum: { $add: ["$deposit", "$installmentsSum"] } },
+      },
+    },
+  ]);
+
+  const totalExpenses = result.length > 0 ? result[0].totalExpenses : 0;
+
+  res.json({ success: true, totalExpenses });
+});
+
+// @desc    Get total count of finished projects (status = "completed")
+// @route   GET /api/projects/finished-count
+// @access  Private
+const getTotalFinishedProjectsCount = asyncHandler(async (req, res) => {
+  const finishedCount = await Project.countDocuments({ status: "completed" });
+  res.json({ success: true, finishedCount });
+});
+
+// @desc    Get total count of active projects (status != "completed")
+// @route   GET /api/projects/active-count
+// @access  Private
+const getTotalActiveProjectsCount = asyncHandler(async (req, res) => {
+  const activeCount = await Project.countDocuments({
+    status: { $ne: "completed" },
+  });
+  res.json({ success: true, activeCount });
+});
+
 module.exports = {
   getProjects,
   getProject,
@@ -239,4 +328,16 @@ module.exports = {
   deleteProject,
   addInstallment,
   getProjectFinancials,
+  getProjects,
+  getProject,
+  createProject,
+  updateProject,
+  deleteProject,
+  addInstallment,
+  getProjectFinancials,
+  getTotalProjectsCount,
+  getTotalProjectsRevenue,
+  getTotalProjectsExpenses,
+  getTotalFinishedProjectsCount,
+  getTotalActiveProjectsCount,
 };

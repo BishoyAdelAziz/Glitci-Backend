@@ -1,268 +1,118 @@
 openapi: 3.0.3
 info:
-  title: Glitci Software Project Tracker API
+  title: Glitci Finance Tracker API
   version: 1.0.0
-  description: |
-    RESTful backend that powers Glitci Software’s internal project-tracking platform.
-    The service handles authentication, project and finance management, employee
-    records, service catalogs, and advanced financial analytics.
-  termsOfService: https://glitci.com/terms
-  contact:
-    name: Glitci Software
-    email: api-support@glitci.com
-    url: https://glitci.com
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
+  description: API documentation for the Project Management System
 
 servers:
-  - url: http://localhost:5000
-    description: Local development
-  - url: https://api.glitci.com
-    description: Production
+  - url: http://localhost:5000/api
 
 tags:
   - name: Auth
-    description: User registration, login, password management
-  - name: Projects
-    description: Project CRUD, installments, and per-project financials
+    description: Endpoints for user authentication and authorization
+  - name: Users
+    description: Endpoints for managing users
   - name: Employees
-    description: Manage company employees
-  - name: Services
-    description: Manage billable service catalog
+    description: Endpoints for managing employees
+  - name: Departments
+    description: Endpoints for managing departments and their roles
+  - name: Projects
+    description: Endpoints for managing projects
   - name: Finance
-    description: Portfolio-wide analytics and payment history
+    description: Endpoints for analytics and financial operations
+  - name: Services
+    description: Endpoints for managing services
 
 components:
   securitySchemes:
     bearerAuth:
-      type: http # RFC 7235 HTTP authentication[14]
+      type: http
       scheme: bearer
       bearerFormat: JWT
-      description: |
-        JWT access token obtained via **/api/auth/login** or **/api/auth/register**.
-        Send as `Authorization: Bearer <token>`. Each protected operation below
-        declares **bearerAuth** in its security requirement.
-    refreshCookie:
-      type: apiKey # Cookie-based “API key” token[3]
-      in: cookie
-      name: refreshToken
-      description: |
-        HttpOnly refresh token automatically issued as a `Set-Cookie` header at
-        login/registration. Used by **/api/auth/refresh** to mint a new JWT.
+
   schemas:
-    # ---------- Primitive, reusable sub-schemas ----------
-    Id:
-      type: string
-      description: MongoDB ObjectId as 24-character hex
-      example: 64ea9d35b64758231e4e6e53
-
-    Phone:
-      type: string
-      pattern: "^[0-9]{10,15}$"
-      example: "201060734567"
-
-    Monetary:
-      type: number
-      format: double
-      minimum: 0
-      example: 7500
-
-    PercentageString:
-      type: string
-      pattern: '^[0-9]+(\\.[0-9]{1,2})?%$'
-      example: "73.45%"
-
-    # ---------- Top-level domain models ----------
     User:
       type: object
-      required: [id, name, email, role]
       properties:
         id:
-          $ref: "#/components/schemas/Id"
+          type: string
         name:
           type: string
-          example: "Sara Youssef"
         email:
           type: string
-          format: email
-          example: "sara@glitci.com"
         role:
           type: string
           enum: [admin, manager, employee]
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
     Employee:
       type: object
-      required: [id, name, email, position, department]
       properties:
         id:
-          $ref: "#/components/schemas/Id"
+          type: string
         name:
           type: string
         email:
           type: string
-          format: email
         phones:
           type: array
           items:
-            $ref: "#/components/schemas/Phone"
-        position:
-          type: string
-          example: "Backend Developer"
-          description: Role or position of the employee
+            type: string
         department:
           type: string
-          example: "Software"
-          description: Department name (dynamic, no enum restriction)
+        position:
+          type: string
         skills:
           type: array
           items:
             type: string
-        hourlyRate:
-          $ref: "#/components/schemas/Monetary"
         availability:
           type: string
           enum: [available, busy, on_leave]
         isActive:
           type: boolean
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-    Service:
+    Department:
       type: object
-      required: [id, name, category]
       properties:
         id:
-          $ref: "#/components/schemas/Id"
+          type: string
         name:
           type: string
-          example: "Website Development"
-        category:
-          type: string
-          enum: [software, marketing]
-        description:
-          type: string
-        basePrice:
-          $ref: "#/components/schemas/Monetary"
-        estimatedHours:
-          type: integer
-          minimum: 0
-        isActive:
-          type: boolean
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
-    Client:
-      type: object
-      required: [id, name, companyName, email]
-      properties:
-        id:
-          $ref: "#/components/schemas/Id"
-        name:
-          type: string
-        companyName:
-          type: string
-        email:
-          type: string
-          format: email
-        phones:
+        roles:
           type: array
           items:
-            $ref: "#/components/schemas/Phone"
-        address:
-          type: object
-          properties:
-            street: { type: string }
-            city: { type: string }
-            state: { type: string }
-            zipCode: { type: string }
-            country: { type: string }
-        industry:
-          type: string
-        notes:
-          type: string
-        isActive:
-          type: boolean
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
-    Installment:
-      type: object
-      required: [method, amount]
-      properties:
-        id:
-          $ref: "#/components/schemas/Id"
-        method:
-          type: string
-          enum: [cash, bank_transfer, check, card]
-        amount:
-          $ref: "#/components/schemas/Monetary"
-        createdAt:
-          type: string
-          format: date-time
-        description:
-          type: string
-
+            type: string
+        services:
+          type: array
+          items:
+            type: string
     Project:
       type: object
-      required:
-        [id, projectName, employees, budget, deposit, client, services, status]
       properties:
         id:
-          $ref: "#/components/schemas/Id"
+          type: string
         projectName:
           type: string
         employees:
           type: array
           items:
             type: object
-            required: [employee]
             properties:
-              employee:
-                $ref: "#/components/schemas/Employee"
-              role:
-                type: string
-                example: "Lead Developer"
-              hourlyRate:
-                $ref: "#/components/schemas/Monetary"
-              assignedAt:
-                type: string
-                format: date-time
+              employee: { type: string }
+              role: { type: string }
+              assignedAt: { type: string, format: date-time }
         budget:
-          $ref: "#/components/schemas/Monetary"
+          type: number
         deposit:
-          $ref: "#/components/schemas/Monetary"
+          type: number
         installments:
           type: array
           items:
             $ref: "#/components/schemas/Installment"
-        totalPaid:
-          $ref: "#/components/schemas/Monetary"
-        completionRate:
-          $ref: "#/components/schemas/PercentageString"
         client:
-          $ref: "#/components/schemas/Client"
+          type: string
         services:
           type: array
           items:
-            $ref: "#/components/schemas/Service"
+            type: string
         status:
           type: string
           enum: [planning, in_progress, completed, cancelled]
@@ -278,18 +128,27 @@ components:
             type: string
         notes:
           type: string
+        totalPaid:
+          type: number
+        completionRate:
+          type: string
+    Installment:
+      type: object
+      properties:
+        method:
+          type: string
+          enum: [cash, bank_transfer, check, card]
+        amount:
+          type: number
         createdAt:
           type: string
           format: date-time
-        updatedAt:
+        description:
           type: string
-          format: date-time
 
 paths:
-  # --------------------------------------------------------------------------
-  #  AUTHENTICATION
-  # --------------------------------------------------------------------------
-  /api/auth/register:
+  # === Authentication ===
+  api/auth/register:
     post:
       tags: [Auth]
       summary: Register a new user
@@ -302,26 +161,26 @@ paths:
               required: [name, email, password]
               properties:
                 name: { type: string }
-                email: { type: string, format: email }
-                password: { type: string, format: password, minLength: 6 }
-                role: { type: string, enum: [admin, manager, employee] }
+                email: { type: string }
+                password: { type: string }
+                role: { type: string }
       responses:
         "201":
-          description: User registered and tokens issued
+          description: User registered
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   message: { type: string }
-                  user: { $ref: "#/components/schemas/User" }
+                  user:
+                    $ref: "#/components/schemas/User"
                   accessToken: { type: string }
-      security: [] # Public
 
-  /api/auth/login:
-    get:
+  /auth/login:
+    post:
       tags: [Auth]
-      summary: Login and obtain JWT + refresh cookie
+      summary: Login user
       requestBody:
         required: true
         content:
@@ -330,30 +189,45 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email: { type: string, format: email }
-                password: { type: string, format: password }
+                email: { type: string }
+                password: { type: string }
       responses:
         "200":
-          description: Successful login
-          headers:
-            Set-Cookie:
-              description: HttpOnly refresh token cookie
-              schema:
-                type: string
+          description: Login successful
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   message: { type: string }
-                  user: { $ref: "#/components/schemas/User" }
+                  user:
+                    $ref: "#/components/schemas/User"
                   accessToken: { type: string }
-      security: [] # Public
 
-  /api/auth/change-password:
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: "#/components/schemas/User"
+
+  /auth/change-password:
     patch:
       tags: [Auth]
-      summary: Change current user password
+      summary: Change password
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -362,24 +236,16 @@ paths:
               type: object
               required: [currentPassword, newPassword]
               properties:
-                currentPassword: { type: string, format: password }
-                newPassword: { type: string, format: password, minLength: 6 }
+                currentPassword: { type: string }
+                newPassword: { type: string }
       responses:
         "200":
-          description: Password updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-      security:
-        - bearerAuth: []
+          description: Password changed
 
-  /api/auth/forgot-password:
+  /auth/forgot-password:
     post:
       tags: [Auth]
-      summary: Send password-reset email
+      summary: Forgot password
       requestBody:
         required: true
         content:
@@ -388,28 +254,21 @@ paths:
               type: object
               required: [email]
               properties:
-                email: { type: string, format: email }
+                email: { type: string }
       responses:
         "200":
-          description: Reset email sent
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-      security: []
+          description: Email sent
 
-  /api/auth/reset-password/{resettoken}:
-    parameters:
-      - in: path
-        name: resettoken
-        required: true
-        schema:
-          type: string
+  /auth/reset-password/{resettoken}:
     put:
       tags: [Auth]
-      summary: Complete password reset using token
+      summary: Reset password
+      parameters:
+        - name: resettoken
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -418,238 +277,82 @@ paths:
               type: object
               required: [password]
               properties:
-                password: { type: string, format: password, minLength: 6 }
+                password: { type: string }
       responses:
         "200":
           description: Password reset successful
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-      security: []
 
-  /api/auth/refresh:
+  /auth/refresh:
     post:
       tags: [Auth]
-      summary: Refresh JWT using HttpOnly cookie
+      summary: Refresh access token
       responses:
         "200":
-          description: New access token issued
-          headers:
-            Set-Cookie:
-              description: Rotated refreshToken
-              schema: { type: string }
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  accessToken: { type: string }
-      security:
-        - refreshCookie: []
+          description: Refreshed access token
 
-  /api/auth/logout:
+  /auth/logout:
     post:
       tags: [Auth]
-      summary: Logout and revoke refresh token
-      responses:
-        "200":
-          description: Logged out
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+      summary: Logout user
       security:
         - bearerAuth: []
+      responses:
+        "200":
+          description: Logout successful
 
-  # --------------------------------------------------------------------------
-  #  PROJECTS
-  # --------------------------------------------------------------------------
-  /api/projects:
+  # === Users ===
+  /users:
     get:
-      tags: [Projects]
-      summary: List all projects
+      tags: [Users]
+      summary: Get all users
+      security:
+        - bearerAuth: []
       responses:
         "200":
-          description: Array of projects
+          description: List of users
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  count: { type: integer }
-                  data:
-                    type: array
-                    items: { $ref: "#/components/schemas/Project" }
-      security:
-        - bearerAuth: []
-    post:
-      tags: [Projects]
-      summary: Create a new project
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Project"
-      responses:
-        "201":
-          description: Project created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Project" }
-      security:
-        - bearerAuth: []
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
 
-  /api/projects/{id}:
-    parameters:
-      - in: path
-        name: id
-        required: true
-        schema: { $ref: "#/components/schemas/Id" }
-    get:
-      tags: [Projects]
-      summary: Get project by ID
-      responses:
-        "200":
-          description: Project details
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Project" }
-      security:
-        - bearerAuth: []
-    put:
-      tags: [Projects]
-      summary: Update project
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Project"
-      responses:
-        "200":
-          description: Project updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Project" }
-      security:
-        - bearerAuth: []
-    delete:
-      tags: [Projects]
-      summary: Delete (hard or soft) a project
-      responses:
-        "200":
-          description: Project deleted
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-      security:
-        - bearerAuth: []
-
-  /api/projects/{id}/installments:
-    post:
-      tags: [Projects]
-      summary: Add installment to project
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { $ref: "#/components/schemas/Id" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Installment"
-      responses:
-        "200":
-          description: Installment added
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Project" }
-      security:
-        - bearerAuth: []
-
-  /api/projects/{id}/financials:
-    get:
-      tags: [Projects]
-      summary: Financial breakdown for a single project
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { $ref: "#/components/schemas/Id" }
-      responses:
-        "200":
-          description: Detailed financial metrics
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      budget: { $ref: "#/components/schemas/Monetary" }
-                      deposit: { $ref: "#/components/schemas/Monetary" }
-                      installments:
-                        type: array
-                        items: { $ref: "#/components/schemas/Installment" }
-                      totalPaid: { $ref: "#/components/schemas/Monetary" }
-                      remainingAmount: { $ref: "#/components/schemas/Monetary" }
-                      completionPercentage:
-                        { $ref: "#/components/schemas/PercentageString" }
-                      paymentHistory:
-                        type: array
-                        items:
-                          type: object
-      security:
-        - bearerAuth: []
-
-  # --------------------------------------------------------------------------
-  #  EMPLOYEES
-  # --------------------------------------------------------------------------
-  /api/employees:
+  # === Employees ===
+  /employees:
     get:
       tags: [Employees]
-      summary: List active employees
+      summary: Get all employees (paginated)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
       responses:
         "200":
-          description: Employee list
+          description: List of employees
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  success: { type: boolean }
                   count: { type: integer }
+                  total: { type: integer }
+                  page: { type: integer }
+                  pages: { type: integer }
                   data:
                     type: array
-                    items: { $ref: "#/components/schemas/Employee" }
-      security:
-        - bearerAuth: []
+                    items:
+                      $ref: "#/components/schemas/Employee"
     post:
       tags: [Employees]
-      summary: Create employee
+      summary: Create new employee
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -659,38 +362,31 @@ paths:
       responses:
         "201":
           description: Employee created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Employee" }
-      security:
-        - bearerAuth: []
 
-  /api/employees/{id}:
-    parameters:
-      - in: path
-        name: id
-        required: true
-        schema: { $ref: "#/components/schemas/Id" }
+  /employees/{id}:
     get:
       tags: [Employees]
-      summary: Get employee by ID
-      responses:
-        "200":
-          description: Employee details
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Employee" }
+      summary: Get single employee
       security:
         - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Employee found
     patch:
       tags: [Employees]
       summary: Update employee
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -700,53 +396,461 @@ paths:
       responses:
         "200":
           description: Employee updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Employee" }
-      security:
-        - bearerAuth: []
     delete:
       tags: [Employees]
-      summary: Soft-delete employee (set **isActive** false)
+      summary: Soft delete employee
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
       responses:
         "200":
           description: Employee deactivated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+
+  # === Departments ===
+  /departments:
+    get:
+      tags: [Departments]
+      summary: Get all departments
       security:
         - bearerAuth: []
-
-  # --------------------------------------------------------------------------
-  #  SERVICES
-  # --------------------------------------------------------------------------
-  /api/services:
-    get:
-      tags: [Services]
-      summary: List active services
       responses:
         "200":
-          description: Service list
+          description: List of all departments
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  count: { type: integer }
+                  success: { type: boolean }
                   data:
                     type: array
-                    items: { $ref: "#/components/schemas/Service" }
+                    items:
+                      $ref: "#/components/schemas/Department"
+    post:
+      tags: [Departments]
+      summary: Create a new department
       security:
         - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Name of the department
+                  example: HR
+                roles:
+                  type: array
+                  items:
+                    type: string
+                  description: List of roles in this department
+                  example: ["recruiter", "talent manager"]
+                services:
+                  type: array
+                  items:
+                    type: string
+                  description: List of service IDs provided by this department
+                  example: ["60f7e7e7e7e7e7e7e7e7e7e1"]
+      responses:
+        "201":
+          description: Department created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: "#/components/schemas/Department"
+        "400":
+          description: Bad request (e.g., missing name)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+
+  /departments/{id}:
+    get:
+      tags: [Departments]
+      summary: Get a single department by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectId
+          description: ID of the department to retrieve
+      responses:
+        "200":
+          description: Department found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: "#/components/schemas/Department"
+        "404":
+          description: Department not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+    patch:
+      tags: [Departments]
+      summary: Update an existing department
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectId
+          description: ID of the department to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: New name for the department
+                  example: Human Resources
+                roles:
+                  type: array
+                  items:
+                    type: string
+                  description: New list of roles for the department
+                  example: ["recruiter", "onboarding specialist"]
+                services:
+                  type: array
+                  items:
+                    type: string
+                  description: New list of service IDs provided by this department
+                  example: ["60f7e7e7e7e7e7e7e7e7e7e3"]
+      responses:
+        "200":
+          description: Department updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: "#/components/schemas/Department"
+        "404":
+          description: Department not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+    delete:
+      tags: [Departments]
+      summary: Delete a department by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectId
+          description: ID of the department to delete
+      responses:
+        "200":
+          description: Department deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+        "404":
+          description: Department not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+
+  /departments/{id}/roles:
+    get:
+      tags: [Departments]
+      summary: Get roles for a specific department by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectId
+          description: ID of the department
+      responses:
+        "200":
+          description: Roles for the specified department
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      department: { type: string }
+                      roles:
+                        type: array
+                        items:
+                          type: string
+        "404":
+          description: Department not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+
+  # === Projects ===
+  /projects:
+    get:
+      tags: [Projects]
+      summary: Get all projects (paginated)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List of projects
+    post:
+      tags: [Projects]
+      summary: Create new project
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Project"
+      responses:
+        "201":
+          description: Project created
+
+  /projects/{id}:
+    get:
+      tags: [Projects]
+      summary: Get single project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Project found
+    put:
+      tags: [Projects]
+      summary: Update project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Project"
+      responses:
+        "200":
+          description: Project updated
+    delete:
+      tags: [Projects]
+      summary: Delete project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Project deleted
+
+  /projects/{id}/installments:
+    post:
+      tags: [Projects]
+      summary: Add installment to project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Installment"
+      responses:
+        "200":
+          description: Installment added
+
+  /projects/{id}/financials:
+    get:
+      tags: [Projects]
+      summary: Get project financial details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Project financials
+
+  /projects/stats/total-count:
+    get:
+      tags: [Projects]
+      summary: Get total count of projects
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Total count
+
+  /projects/stats/total-revenue:
+    get:
+      tags: [Projects]
+      summary: Get total revenue from all projects
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Total revenue
+
+  /projects/stats/total-expenses:
+    get:
+      tags: [Projects]
+      summary: Get total expenses from all projects
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Total expenses
+
+  /projects/stats/finished-count:
+    get:
+      tags: [Projects]
+      summary: Get total count of finished projects
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Finished count
+
+  /projects/stats/active-count:
+    get:
+      tags: [Projects]
+      summary: Get total count of active projects
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active count
+
+  # === Finance ===
+  /finance/analytics:
+    get:
+      tags: [Finance]
+      summary: Get overall financial analytics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Financial analytics
+
+  /finance/services/{category}:
+    get:
+      tags: [Finance]
+      summary: Get service-specific analytics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Service analytics
+
+  # === Services ===
+  /services:
+    get:
+      tags: [Services]
+      summary: Get all services
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of all services
     post:
       tags: [Services]
-      summary: Create service
+      summary: Create a new service
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -755,123 +859,27 @@ paths:
               $ref: "#/components/schemas/Service"
       responses:
         "201":
-          description: Service created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Service" }
-      security:
-        - bearerAuth: []
+          description: Service created successfully
 
-  /api/services/{id}:
-    parameters:
-      - in: path
-        name: id
-        required: true
-        schema: { $ref: "#/components/schemas/Id" }
-    put:
-      tags: [Services]
-      summary: Update service
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Service"
-      responses:
-        "200":
-          description: Service updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: { $ref: "#/components/schemas/Service" }
-      security:
-        - bearerAuth: []
-    delete:
-      tags: [Services]
-      summary: Soft-delete service
-      responses:
-        "200":
-          description: Service deactivated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-      security:
-        - bearerAuth: []
-
-  # --------------------------------------------------------------------------
-  #  FINANCE
-  # --------------------------------------------------------------------------
-  /api/finance/analytics:
+  /finance/payments:
     get:
       tags: [Finance]
-      summary: Portfolio-wide analytics dashboard
-      responses:
-        "200":
-          description: Consolidated metrics
-          content:
-            application/json:
-              schema:
-                type: object
+      summary: Get payment history
       security:
         - bearerAuth: []
-
-  /api/finance/services/{category}:
-    parameters:
-      - in: path
-        name: category
-        required: true
-        schema:
-          type: string
-          enum: [software, marketing]
-    get:
-      tags: [Finance]
-      summary: Service-specific analytics
-      responses:
-        "200":
-          description: Analytics for service category
-          content:
-            application/json:
-              schema:
-                type: object
-      security:
-        - bearerAuth: []
-
-  /api/finance/payments:
-    get:
-      tags: [Finance]
-      summary: Consolidated payment history
       parameters:
-        - in: query
-          name: startDate
-          schema:
-            type: string
-            format: date
-        - in: query
-          name: endDate
-          schema:
-            type: string
-            format: date
-        - in: query
-          name: projectId
-          schema:
-            $ref: "#/components/schemas/Id"
+        - name: startDate
+          in: query
+          schema: { type: string, format: date }
+        - name: endDate
+          in: query
+          schema: { type: string, format: date }
+        - name: projectId
+          in: query
+          schema: { type: string }
       responses:
         "200":
-          description: Payments with optional filtering
-          content:
-            application/json:
-              schema:
-                type: object
-      security:
-        - bearerAuth: []
+          description: Payment history
 
 security:
-  - bearerAuth: [] # Default requirement; public endpoints override as needed
+  - bearerAuth: []

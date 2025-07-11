@@ -1,22 +1,23 @@
 const express = require("express");
 const {
   getServices,
+  getService,
   createService,
   updateService,
   deleteService,
 } = require("../controllers/serviceController");
-const { protect, manager } = require("../middleware/auth");
 
 const router = express.Router();
 
-router
-  .route("/")
-  .get(protect, getServices)
-  .post(protect, manager, createService);
+// Import authentication middleware if you have it
+// const { protect, authorize } = require('../middleware/auth');
 
-router
-  .route("/:id")
-  .put(protect, manager, updateService)
-  .delete(protect, manager, deleteService);
+// Example of protecting routes:
+// router.use(protect);
+// router.use(authorize('admin')); // Or any other role that can manage services
+
+router.route("/").get(getServices).post(createService);
+
+router.route("/:id").get(getService).patch(updateService).delete(deleteService);
 
 module.exports = router;
