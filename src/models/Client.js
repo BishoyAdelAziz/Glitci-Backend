@@ -22,7 +22,6 @@ const clientSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
 clientSchema.pre("save", async function (next) {
   if (this.isNew) {
     try {
