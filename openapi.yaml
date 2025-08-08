@@ -1,27 +1,23 @@
 openapi: 3.0.3
 info:
-  title: Glitci Finance Tracker API
+  title: Employee Management System API
   version: 1.0.0
-  description: API documentation for the Project Management System
+  description: API documentation for the Employee Management System
 
 servers:
   - url: http://localhost:5000/api
 
 tags:
   - name: Auth
-    description: Endpoints for user authentication and authorization
-  - name: Users
-    description: Endpoints for managing users
-  - name: Employees
-    description: Endpoints for managing employees
+    description: Authentication endpoints
   - name: Departments
-    description: Endpoints for managing departments and their roles
-  - name: Projects
-    description: Endpoints for managing projects
-  - name: Finance
-    description: Endpoints for analytics and financial operations
-  - name: Services
-    description: Endpoints for managing services
+    description: Department management
+  - name: positions
+    description: position management
+  - name: Skills
+    description: Skill management
+  - name: Employees
+    description: Employee management
 
 components:
   securitySchemes:
@@ -31,386 +27,119 @@ components:
       bearerFormat: JWT
 
   schemas:
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        email:
-          type: string
-        role:
-          type: string
-          enum: [admin, manager, employee]
-    Employee:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        email:
-          type: string
-        phones:
-          type: array
-          items:
-            type: string
-        department:
-          type: string
-        position:
-          type: string
-        skills:
-          type: array
-          items:
-            type: string
-        availability:
-          type: string
-          enum: [available, busy, on_leave]
-        isActive:
-          type: boolean
     Department:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          example: 1
         name:
           type: string
-        roles:
-          type: array
-          items:
-            type: string
-        services:
-          type: array
-          items:
-            type: string
-    Project:
-      type: object
-      properties:
-        id:
-          type: string
-        projectName:
-          type: string
-        employees:
-          type: array
-          items:
-            type: object
-            properties:
-              employee: { type: string }
-              role: { type: string }
-              assignedAt: { type: string, format: date-time }
-        budget:
-          type: number
-        deposit:
-          type: number
-        installments:
-          type: array
-          items:
-            $ref: "#/components/schemas/Installment"
-        client:
-          type: string
-        services:
-          type: array
-          items:
-            type: string
-        status:
-          type: string
-          enum: [planning, in_progress, completed, cancelled]
-        startDate:
-          type: string
-          format: date
-        endDate:
-          type: string
-          format: date
-        deliverables:
-          type: array
-          items:
-            type: string
-        notes:
-          type: string
-        totalPaid:
-          type: number
-        completionRate:
-          type: string
-    Installment:
-      type: object
-      properties:
-        method:
-          type: string
-          enum: [cash, bank_transfer, check, card]
-        amount:
-          type: number
+          example: "Engineering"
         createdAt:
           type: string
           format: date-time
-        description:
+        updatedAt:
           type: string
+          format: date-time
+
+    position:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Software Engineer"
+        department:
+          type: integer
+          example: 1
+        skills:
+          type: array
+          items:
+            type: string
+          example: ["60f7e7e7e7e7e7e7e7e7e7e1"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Skill:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "JavaScript"
+        category:
+          type: string
+          example: "technical"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Employee:
+      type: object
+      properties:
+        serialId:
+          type: integer
+          example: 1001
+        name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          example: "john@example.com"
+        phones:
+          type: array
+          items:
+            type: string
+          example: ["+1234567890"]
+        department:
+          type: string
+          example: "60f7e7e7e7e7e7e7e7e7e7e1"
+        position:
+          type: string
+          example: "60f7e7e7e7e7e7e7e7e7e7e2"
+        skills:
+          type: array
+          items:
+            type: string
+          example: ["60f7e7e7e7e7e7e7e7e7e7e3"]
+        availability:
+          type: string
+          enum: ["available", "busy", "on_leave"]
+          example: "available"
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Department not found"
 
 paths:
-  # === Authentication ===
-  api/auth/register:
-    post:
-      tags: [Auth]
-      summary: Register a new user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name, email, password]
-              properties:
-                name: { type: string }
-                email: { type: string }
-                password: { type: string }
-                role: { type: string }
-      responses:
-        "201":
-          description: User registered
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  user:
-                    $ref: "#/components/schemas/User"
-                  accessToken: { type: string }
-
-  /auth/login:
-    post:
-      tags: [Auth]
-      summary: Login user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email, password]
-              properties:
-                email: { type: string }
-                password: { type: string }
-      responses:
-        "200":
-          description: Login successful
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  user:
-                    $ref: "#/components/schemas/User"
-                  accessToken: { type: string }
-
-  /auth/me:
-    get:
-      tags: [Auth]
-      summary: Get current user
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Current user info
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  data:
-                    $ref: "#/components/schemas/User"
-
-  /auth/change-password:
-    patch:
-      tags: [Auth]
-      summary: Change password
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [currentPassword, newPassword]
-              properties:
-                currentPassword: { type: string }
-                newPassword: { type: string }
-      responses:
-        "200":
-          description: Password changed
-
-  /auth/forgot-password:
-    post:
-      tags: [Auth]
-      summary: Forgot password
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email]
-              properties:
-                email: { type: string }
-      responses:
-        "200":
-          description: Email sent
-
-  /auth/reset-password/{resettoken}:
-    put:
-      tags: [Auth]
-      summary: Reset password
-      parameters:
-        - name: resettoken
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [password]
-              properties:
-                password: { type: string }
-      responses:
-        "200":
-          description: Password reset successful
-
-  /auth/refresh:
-    post:
-      tags: [Auth]
-      summary: Refresh access token
-      responses:
-        "200":
-          description: Refreshed access token
-
-  /auth/logout:
-    post:
-      tags: [Auth]
-      summary: Logout user
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Logout successful
-
-  # === Users ===
-  /users:
-    get:
-      tags: [Users]
-      summary: Get all users
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: List of users
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/User"
-
-  # === Employees ===
-  /employees:
-    get:
-      tags: [Employees]
-      summary: Get all employees (paginated)
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: page
-          in: query
-          schema: { type: integer }
-        - name: limit
-          in: query
-          schema: { type: integer }
-      responses:
-        "200":
-          description: List of employees
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  count: { type: integer }
-                  total: { type: integer }
-                  page: { type: integer }
-                  pages: { type: integer }
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Employee"
-    post:
-      tags: [Employees]
-      summary: Create new employee
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Employee"
-      responses:
-        "201":
-          description: Employee created
-
-  /employees/{id}:
-    get:
-      tags: [Employees]
-      summary: Get single employee
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Employee found
-    patch:
-      tags: [Employees]
-      summary: Update employee
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Employee"
-      responses:
-        "200":
-          description: Employee updated
-    delete:
-      tags: [Employees]
-      summary: Soft delete employee
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Employee deactivated
-
-  # === Departments ===
+  # ===== Departments =====
   /departments:
     get:
       tags: [Departments]
@@ -419,13 +148,15 @@ paths:
         - bearerAuth: []
       responses:
         "200":
-          description: List of all departments
+          description: List of departments
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
+                  success:
+                    type: boolean
+                    example: true
                   data:
                     type: array
                     items:
@@ -446,45 +177,31 @@ paths:
               properties:
                 name:
                   type: string
-                  description: Name of the department
-                  example: HR
-                roles:
-                  type: array
-                  items:
-                    type: string
-                  description: List of roles in this department
-                  example: ["recruiter", "talent manager"]
-                services:
-                  type: array
-                  items:
-                    type: string
-                  description: List of service IDs provided by this department
-                  example: ["60f7e7e7e7e7e7e7e7e7e7e1"]
+                  example: "Engineering"
       responses:
         "201":
-          description: Department created successfully
+          description: Department created
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
+                  success:
+                    type: boolean
+                    example: true
                   data:
                     $ref: "#/components/schemas/Department"
         "400":
-          description: Bad request (e.g., missing name)
+          description: Bad request
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  message: { type: string }
+                $ref: "#/components/schemas/ErrorResponse"
 
   /departments/{id}:
     get:
       tags: [Departments]
-      summary: Get a single department by ID
+      summary: Get a department by ID
       security:
         - bearerAuth: []
       parameters:
@@ -492,18 +209,18 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            format: objectId
-          description: ID of the department to retrieve
+            type: integer
       responses:
         "200":
-          description: Department found
+          description: Department details
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
+                  success:
+                    type: boolean
+                    example: true
                   data:
                     $ref: "#/components/schemas/Department"
         "404":
@@ -511,13 +228,10 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  message: { type: string }
+                $ref: "#/components/schemas/ErrorResponse"
     patch:
       tags: [Departments]
-      summary: Update an existing department
+      summary: Update a department
       security:
         - bearerAuth: []
       parameters:
@@ -525,9 +239,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            format: objectId
-          description: ID of the department to update
+            type: integer
       requestBody:
         required: true
         content:
@@ -537,29 +249,18 @@ paths:
               properties:
                 name:
                   type: string
-                  description: New name for the department
-                  example: Human Resources
-                roles:
-                  type: array
-                  items:
-                    type: string
-                  description: New list of roles for the department
-                  example: ["recruiter", "onboarding specialist"]
-                services:
-                  type: array
-                  items:
-                    type: string
-                  description: New list of service IDs provided by this department
-                  example: ["60f7e7e7e7e7e7e7e7e7e7e3"]
+                  example: "Engineering Department"
       responses:
         "200":
-          description: Department updated successfully
+          description: Department updated
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
+                  success:
+                    type: boolean
+                    example: true
                   data:
                     $ref: "#/components/schemas/Department"
         "404":
@@ -567,13 +268,10 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  message: { type: string }
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags: [Departments]
-      summary: Delete a department by ID
+      summary: Delete a department
       security:
         - bearerAuth: []
       parameters:
@@ -581,90 +279,495 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            format: objectId
-          description: ID of the department to delete
+            type: integer
       responses:
         "200":
-          description: Department deleted successfully
+          description: Department deleted
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
-                  message: { type: string }
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Department deleted"
+        "400":
+          description: Bad request (department has positions)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Department not found
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  message: { type: string }
+                $ref: "#/components/schemas/ErrorResponse"
 
-  /departments/{id}/roles:
+  # ===== positions =====
+  /positions/department/{departmentId}:
     get:
-      tags: [Departments]
-      summary: Get roles for a specific department by ID
+      tags: [positions]
+      summary: Get positions by department
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: departmentId
           in: path
           required: true
           schema:
-            type: string
-            format: objectId
-          description: ID of the department
+            type: integer
       responses:
         "200":
-          description: Roles for the specified department
+          description: List of positions
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
+                  success:
+                    type: boolean
+                    example: true
                   data:
-                    type: object
-                    properties:
-                      department: { type: string }
-                      roles:
-                        type: array
-                        items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        name:
                           type: string
-        "404":
-          description: Department not found
+                          example: "Software Engineer"
+                        skills:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                              name:
+                                type: string
+
+  /positions:
+    post:
+      tags: [positions]
+      summary: Create a new position
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - departmentId
+                - skillIds
+              properties:
+                name:
+                  type: string
+                  example: "Software Engineer"
+                departmentId:
+                  type: integer
+                  example: 1
+                skillIds:
+                  type: array
+                  items:
+                    type: string
+                  example: ["60f7e7e7e7e7e7e7e7e7e7e1"]
+      responses:
+        "201":
+          description: position created
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
-                  message: { type: string }
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/position"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Department not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
-  # === Projects ===
-  /projects:
+  /positions/{id}:
     get:
-      tags: [Projects]
-      summary: Get all projects (paginated)
+      tags: [positions]
+      summary: Get a position by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: position details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/position"
+        "404":
+          description: position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [positions]
+      summary: Update a position
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Senior Software Engineer"
+                departmentId:
+                  type: integer
+                  example: 1
+                skillIds:
+                  type: array
+                  items:
+                    type: string
+                  example: ["60f7e7e7e7e7e7e7e7e7e7e1"]
+      responses:
+        "200":
+          description: position updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/position"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [positions]
+      summary: Delete a position
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: position deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "position deleted"
+        "400":
+          description: Bad request (position has employees)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ===== Skills =====
+  /skills:
+    get:
+      tags: [Skills]
+      summary: Get all skills
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of skills
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Skill"
+    post:
+      tags: [Skills]
+      summary: Create a new skill
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "JavaScript"
+                category:
+                  type: string
+                  example: "technical"
+      responses:
+        "201":
+          description: Skill created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Skill"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /skills/{id}:
+    get:
+      tags: [Skills]
+      summary: Get a skill by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Skill details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Skill"
+        "404":
+          description: Skill not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Skills]
+      summary: Update a skill
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "JavaScript ES6+"
+                category:
+                  type: string
+                  example: "technical"
+      responses:
+        "200":
+          description: Skill updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Skill"
+        "404":
+          description: Skill not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Skills]
+      summary: Delete a skill
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Skill deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Skill deleted"
+        "400":
+          description: Bad request (skill assigned to positions)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Skill not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ===== Employees =====
+  /employees:
+    get:
+      tags: [Employees]
+      summary: Get all employees (paginated)
       security:
         - bearerAuth: []
       parameters:
         - name: page
           in: query
-          schema: { type: integer }
+          schema:
+            type: integer
+            default: 1
         - name: limit
           in: query
-          schema: { type: integer }
+          schema:
+            type: integer
+            default: 10
+        - name: department
+          in: query
+          schema:
+            type: string
+        - name: position
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: availability
+          in: query
+          schema:
+            type: string
+            enum: [available, busy, on_leave]
       responses:
         "200":
-          description: List of projects
+          description: List of employees
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  count:
+                    type: integer
+                    example: 10
+                  total:
+                    type: integer
+                    example: 100
+                  pages:
+                    type: integer
+                    example: 10
+                  currentPage:
+                    type: integer
+                    example: 1
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Employee"
     post:
-      tags: [Projects]
-      summary: Create new project
+      tags: [Employees]
+      summary: Create a new employee
       security:
         - bearerAuth: []
       requestBody:
@@ -672,214 +775,272 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Project"
+              type: object
+              required:
+                - name
+                - email
+                - phones
+                - department
+                - position
+                - skills
+              properties:
+                name:
+                  type: string
+                  example: "John Doe"
+                email:
+                  type: string
+                  example: "john@example.com"
+                phones:
+                  type: array
+                  items:
+                    type: string
+                  example: ["+1234567890"]
+                department:
+                  type: string
+                  example: "60f7e7e7e7e7e7e7e7e7e7e1"
+                position:
+                  type: string
+                  example: "60f7e7e7e7e7e7e7e7e7e7e2"
+                skills:
+                  type: array
+                  items:
+                    type: string
+                  example: ["60f7e7e7e7e7e7e7e7e7e7e3"]
+                availability:
+                  type: string
+                  enum: [available, busy, on_leave]
+                  example: "available"
       responses:
         "201":
-          description: Project created
+          description: Employee created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Employee"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Department or position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
-  /projects/{id}:
+  /employees/department/{departmentId}:
     get:
-      tags: [Projects]
-      summary: Get single project
+      tags: [Employees]
+      summary: Get employees by department
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: departmentId
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
       responses:
         "200":
-          description: Project found
-    put:
-      tags: [Projects]
-      summary: Update project
+          description: List of employees in department
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  count:
+                    type: integer
+                    example: 5
+                  total:
+                    type: integer
+                    example: 25
+                  pages:
+                    type: integer
+                    example: 5
+                  currentPage:
+                    type: integer
+                    example: 1
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Employee"
+        "404":
+          description: Department not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /employees/{id}:
+    get:
+      tags: [Employees]
+      summary: Get an employee by ID
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Employee details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Employee"
+        "403":
+          description: Forbidden (not authorized)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Employee not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Employees]
+      summary: Update an employee
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Project"
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "John Doe Jr."
+                email:
+                  type: string
+                  example: "john.jr@example.com"
+                phones:
+                  type: array
+                  items:
+                    type: string
+                  example: ["+1234567890", "+9876543210"]
+                department:
+                  type: string
+                  example: "60f7e7e7e7e7e7e7e7e7e7e1"
+                position:
+                  type: string
+                  example: "60f7e7e7e7e7e7e7e7e7e7e2"
+                skills:
+                  type: array
+                  items:
+                    type: string
+                  example: ["60f7e7e7e7e7e7e7e7e7e7e3"]
+                availability:
+                  type: string
+                  enum: [available, busy, on_leave]
+                  example: "busy"
       responses:
         "200":
-          description: Project updated
+          description: Employee updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Employee"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden (not authorized)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Employee not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
-      tags: [Projects]
-      summary: Delete project
+      tags: [Employees]
+      summary: Delete (deactivate) an employee
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
-          description: Project deleted
-
-  /projects/{id}/installments:
-    post:
-      tags: [Projects]
-      summary: Add installment to project
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Installment"
-      responses:
-        "200":
-          description: Installment added
-
-  /projects/{id}/financials:
-    get:
-      tags: [Projects]
-      summary: Get project financial details
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Project financials
-
-  /projects/stats/total-count:
-    get:
-      tags: [Projects]
-      summary: Get total count of projects
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Total count
-
-  /projects/stats/total-revenue:
-    get:
-      tags: [Projects]
-      summary: Get total revenue from all projects
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Total revenue
-
-  /projects/stats/total-expenses:
-    get:
-      tags: [Projects]
-      summary: Get total expenses from all projects
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Total expenses
-
-  /projects/stats/finished-count:
-    get:
-      tags: [Projects]
-      summary: Get total count of finished projects
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Finished count
-
-  /projects/stats/active-count:
-    get:
-      tags: [Projects]
-      summary: Get total count of active projects
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Active count
-
-  # === Finance ===
-  /finance/analytics:
-    get:
-      tags: [Finance]
-      summary: Get overall financial analytics
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Financial analytics
-
-  /finance/services/{category}:
-    get:
-      tags: [Finance]
-      summary: Get service-specific analytics
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: category
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Service analytics
-
-  # === Services ===
-  /services:
-    get:
-      tags: [Services]
-      summary: Get all services
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: List of all services
-    post:
-      tags: [Services]
-      summary: Create a new service
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Service"
-      responses:
-        "201":
-          description: Service created successfully
-
-  /finance/payments:
-    get:
-      tags: [Finance]
-      summary: Get payment history
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: startDate
-          in: query
-          schema: { type: string, format: date }
-        - name: endDate
-          in: query
-          schema: { type: string, format: date }
-        - name: projectId
-          in: query
-          schema: { type: string }
-      responses:
-        "200":
-          description: Payment history
+          description: Employee deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Employee deactivated successfully"
+        "403":
+          description: Forbidden (not admin)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Employee not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 security:
   - bearerAuth: []
