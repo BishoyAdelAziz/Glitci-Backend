@@ -1,11 +1,10 @@
 const express = require("express");
 const {
-  getDepartments,
   getDepartment,
+  getDepartments,
   createDepartment,
   updateDepartment,
   deleteDepartment,
-  getDepartmentRoles,
 } = require("../controllers/departmentsController");
 const router = express.Router();
 
@@ -14,9 +13,6 @@ router.get("/", getDepartments);
 
 // GET single department
 router.get("/:id", getDepartment);
-
-// GET roles for a department
-router.get("/:id/roles", getDepartmentRoles);
 
 // CREATE department
 router.post("/", createDepartment);
