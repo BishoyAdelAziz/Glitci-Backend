@@ -1,94 +1,109 @@
 const asyncHandler = require("express-async-handler");
-const Department = require("../models/Departments.js");
+const Department = require("../models/Departments");
+const Role = require("../models/Position");
 
 // @desc    Get all departments
 // @route   GET /api/departments
 // @access  Private
 const getDepartments = asyncHandler(async (req, res) => {
-  const departments = await Department.find().select("name roles services");
-  res.json({ success: true, data: departments });
+  const departments = await Department.find().select("_id name");
+  res.json({
+    success: true,
+    data: departments.map((dept) => ({ id: dept._id, name: dept.name })),
+  });
 });
 
-// @desc    Get a single department
+// @desc    Get single department
 // @route   GET /api/departments/:id
 // @access  Private
 const getDepartment = asyncHandler(async (req, res) => {
   const department = await Department.findById(req.params.id).select(
-    "name roles services"
+    "_id name"
   );
   if (!department) {
-    return res
-      .status(404)
-      .json({ success: false, message: "Department not found" });
+    return res.status(404).json({
+      success: false,
+      message: "Department not found",
+    });
   }
-  res.json({ success: true, data: department });
+  res.json({
+    success: true,
+    data: { id: department._id, name: department.name },
+  });
 });
 
-// @desc    Create a department
+// @desc    Create department
 // @route   POST /api/departments
 // @access  Private (Admin/Manager)
 const createDepartment = asyncHandler(async (req, res) => {
-  const { name, roles, services } = req.body;
+  const { name } = req.body;
+
   if (!name) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Name is required" });
+    return res.status(400).json({
+      success: false,
+      message: "Name is required",
+    });
   }
+
   const department = await Department.create({
     name: name.toLowerCase().trim(),
-    roles: roles || [],
-    services: services || [],
   });
-  res.status(201).json({ success: true, data: department });
+
+  res.status(201).json({
+    success: true,
+    data: { id: department._id, name: department.name },
+  });
 });
 
-// @desc    Update a department
+// @desc    Update department
 // @route   PATCH /api/departments/:id
 // @access  Private (Admin/Manager)
 const updateDepartment = asyncHandler(async (req, res) => {
-  const { name, roles, services } = req.body;
+  const { name } = req.body;
   const department = await Department.findById(req.params.id);
+
   if (!department) {
-    return res
-      .status(404)
-      .json({ success: false, message: "Department not found" });
+    return res.status(404).json({
+      success: false,
+      message: "Department not found",
+    });
   }
+
   if (name) department.name = name.toLowerCase().trim();
-  if (Array.isArray(roles)) department.roles = roles;
-  if (Array.isArray(services)) department.services = services;
   await department.save();
-  res.json({ success: true, data: department });
+
+  res.json({
+    success: true,
+    data: { id: department._id, name: department.name },
+  });
 });
 
-// @desc    Delete a department
+// @desc    Delete department
 // @route   DELETE /api/departments/:id
 // @access  Private (Admin/Manager)
 const deleteDepartment = asyncHandler(async (req, res) => {
   const department = await Department.findById(req.params.id);
-  if (!department) {
-    return res
-      .status(404)
-      .json({ success: false, message: "Department not found" });
-  }
-  await department.deleteOne();
-  res.json({ success: true, message: "Department deleted" });
-});
 
-// @desc    Get roles for a specific department
-// @route   GET /api/departments/:id/roles
-// @access  Private
-const getDepartmentRoles = asyncHandler(async (req, res) => {
-  const department = await Department.findById(req.params.id).select(
-    "name roles"
-  );
   if (!department) {
-    return res
-      .status(404)
-      .json({ success: false, message: "Department not found" });
+    return res.status(404).json({
+      success: false,
+      message: "Department not found",
+    });
   }
+
+  // Check if department has roles
+  const rolesCount = await Role.countDocuments({ department: department._id });
+  if (rolesCount > 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Cannot delete department with existing roles",
+    });
+  }
+
+  await department.deleteOne();
   res.json({
     success: true,
-    data: { department: department.name, roles: department.roles },
+    message: "Department deleted",
   });
 });
 
@@ -98,5 +113,4 @@ module.exports = {
   createDepartment,
   updateDepartment,
   deleteDepartment,
-  getDepartmentRoles,
 };
