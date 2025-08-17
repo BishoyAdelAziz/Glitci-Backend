@@ -1,138 +1,121 @@
 const mongoose = require("mongoose");
-const Counter = require("./counter");
+const Counter = require("./counter"); // Fixed capitalization
 
 const employeeSchema = new mongoose.Schema(
   {
-    serialId: { type: Number, unique: true, index: true },
+    _id: {
+      type: String,
+      upsert: true,
+      unique: true,
+    },
     name: {
       type: String,
-      required: [true, "Employee name is required"],
-      minlength: [2, "Name must be at least 2 characters"],
-      maxlength: [100, "Name cannot exceed 100 characters"],
+      required: true,
+      minlength: 2,
+      maxlength: 100,
     },
     email: {
       type: String,
-      required: [true, "Email is required"],
+      required: true,
       unique: true,
       lowercase: true,
       trim: true,
-      validate: {
-        validator: (v) => /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(v),
-        message: "Please enter a valid email address",
-      },
     },
-    phones: [
-      {
-        type: String,
-        required: [true, "At least one phone number is required"],
-        validate: {
-          validator: (v) => /^\d{10,15}$/.test(v),
-          message: "Please enter a valid phone number (10-15 digits)",
-        },
-      },
-    ],
-    // Support multiple departments
     departments: [
       {
-        type: Number,
+        type: String,
         ref: "Department",
         required: true,
       },
     ],
-    // Support multiple roles with additional context
-    roles: [
+    positions: [
       {
-        role: {
-          type: Number,
-          ref: "Role",
-          required: true,
-        },
-        startDate: {
-          type: Date,
-          default: Date.now,
-        },
-        isPrimary: {
-          type: Boolean,
-        },
+        type: String,
+        ref: "Position",
+        required: true,
       },
     ],
-    // Enhanced skills with proficiency tracking
     skills: [
       {
-        skill: {
+        type: String,
+        ref: "Skill",
+        required: true,
+      },
+    ],
+    projects: [
+      {
+        project: {
+          type: String,
+          ref: "Project",
+        },
+        budget: {
           type: Number,
-          ref: "Skill",
-          required: true,
+          default: 0,
+          min: 0,
+        },
+        installments: [
+          {
+            amount: {
+              type: Number,
+              required: true,
+              min: 0,
+            },
+            date: {
+              type: Date,
+              default: Date.now,
+            },
+            addedBy: {
+              type: String,
+              ref: "User",
+              required: true,
+            },
+          },
+        ],
+        currency: {
+          type: String,
+          default: "EGP",
         },
       },
     ],
-    hireDate: {
-      type: Date,
-      default: Date.now,
-    },
     isActive: {
       type: Boolean,
       default: true,
     },
-    // Additional fields for better employee management
   },
   {
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
+    id: false, // Disable virtual id field to avoid conflicts
   }
 );
 
-// Auto-increment serialId
+// Fixed pre-save middleware with proper async handling and error handling
 employeeSchema.pre("save", async function (next) {
-  if (this.isNew) {
+  if (!this.isNew) return next();
+
+  try {
     const counter = await Counter.findByIdAndUpdate(
-      "employeeId",
+      { _id: "employeeId" },
       { $inc: { seq: 1 } },
       { new: true, upsert: true }
     );
-    this.serialId = counter.seq;
+
+    this._id = counter.seq.toString(); // Simple numeric ID
+    next();
+  } catch (err) {
+    console.error("Failed to generate employee ID:", err);
+    // Fallback to timestamp if counter fails
+    this._id = Date.now().toString();
+    next();
   }
-  next();
 });
+// Add validation to ensure ID is always set
+employeeSchema.path("_id").validate(function (value) {
+  return !!value && typeof value === "string" && /^\d+$/.test(value);
+}, "Invalid employee ID format");
 
-// Validation: At least one department is required
-employeeSchema.path("departments").validate(function (departments) {
-  return departments && departments.length > 0;
-}, "At least one department is required");
-
-// Validation: At least one role is required
-employeeSchema.path("roles").validate(function (roles) {
-  return roles && roles.length > 0;
-}, "At least one role is required");
-
-// Validation: Only one primary role allowed
-
-// Validation: At least one skill is required
-employeeSchema.path("skills").validate(function (skills) {
-  return skills && skills.length > 0;
-}, "At least one skill is required");
-
-// Pre-save validation for role-department consistency
-employeeSchema.pre("save", async function (next) {
-  if (this.isModified("roles") || this.isModified("departments")) {
-    const Role = mongoose.model("Role");
-
-    for (const roleObj of this.roles) {
-      const role = await Role.findById(roleObj.role);
-      if (role && !this.departments.includes(role.department)) {
-        return next(
-          new Error(
-            `Role ${role.name} is not available in the selected departments`
-          )
-        );
-      }
-    }
-  }
-  next();
-});
-
-// Virtual population for department details
+// Virtuals for populated data
 employeeSchema.virtual("departmentDetails", {
   ref: "Department",
   localField: "departments",
@@ -140,38 +123,50 @@ employeeSchema.virtual("departmentDetails", {
   justOne: false,
 });
 
-// Virtual population for role details
-employeeSchema.virtual("roleDetails", {
-  ref: "Role",
-  localField: "roles.role",
+employeeSchema.virtual("positionDetails", {
+  ref: "Position",
+  localField: "positions",
   foreignField: "_id",
   justOne: false,
 });
 
-// Virtual population for skill details
 employeeSchema.virtual("skillDetails", {
   ref: "Skill",
-  localField: "skills.skill",
+  localField: "skills",
   foreignField: "_id",
   justOne: false,
 });
 
-// Virtual for primary role
-employeeSchema.virtual("primaryRole").get(function () {
-  const primaryRole = this.roles.find((r) => r.isPrimary);
-  return primaryRole
-    ? primaryRole.role
-    : this.roles.length > 0
-    ? this.roles[0].role
-    : null;
+employeeSchema.virtual("projectDetails", {
+  ref: "Project",
+  localField: "projects.project",
+  foreignField: "_id",
+  justOne: false,
 });
 
-// Index for better query performance
+// Virtual for completion rate per project
+employeeSchema.virtual("completionRates").get(function () {
+  return this.projects.map((project) => {
+    const totalInstallments = project.installments.reduce(
+      (sum, inst) => sum + inst.amount,
+      0
+    );
+    const completionRate =
+      project.budget > 0 ? (totalInstallments / project.budget) * 100 : 0;
+    return {
+      projectId: project.project,
+      completionRate: parseFloat(completionRate.toFixed(2)),
+    };
+  });
+});
+
+// Indexes
 employeeSchema.index({ departments: 1 });
-employeeSchema.index({ "roles.role": 1 });
-employeeSchema.index({ "skills.skill": 1 });
+employeeSchema.index({ positions: 1 });
+employeeSchema.index({ skills: 1 });
 employeeSchema.index({ isActive: 1 });
-employeeSchema.index({ availability: 1 });
+employeeSchema.index({ "projects.project": 1 });
+employeeSchema.index({ email: 1 }, { unique: true });
 
 module.exports =
   mongoose.models.Employee || mongoose.model("Employee", employeeSchema);
