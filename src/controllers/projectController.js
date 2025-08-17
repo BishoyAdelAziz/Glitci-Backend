@@ -3,322 +3,328 @@ const Project = require("../models/Project");
 const Employee = require("../models/Employee");
 const Service = require("../models/Service");
 const Client = require("../models/Client");
+const User = require("../models/User");
 
+/**
+ * @desc    Get all projects with advanced filtering
+ * @route   GET /api/projects
+ * @access  Private
+ */
 const getProjects = asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
-  const skip = (page - 1) * limit;
-
-  // Fetch paginated projects with population
-  const [projects, total] = await Promise.all([
-    Project.find()
-      .populate("employees.employee", "name email")
-      .populate("client", "name companyName email")
-      .populate("services", "name category")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Project.countDocuments(),
-  ]);
-
-  // Add calculated fields
-  const projectsWithCalculations = projects.map((project) => {
-    const projectObj = project.toObject();
-    projectObj.totalPaid = project.totalPaid;
-    projectObj.completionRate = project.completionRate;
-    return projectObj;
-  });
-
-  res.json({
-    success: true,
-    count: projectsWithCalculations.length,
-    total,
-    page,
-    pages: Math.ceil(total / limit),
-    data: projectsWithCalculations,
-  });
-});
-
-// @desc    Get single project
-// @route   GET /api/projects/:id
-// @access  Private
-const getProject = asyncHandler(async (req, res) => {
-  const project = await Project.findById(req.params.id)
-    .populate("employees.employee", "name email phones position")
-    .populate("client", "name companyName email phones")
-    .populate("services", "name category description");
-
-  if (!project) {
-    return res.status(404).json({ message: "Project not found" });
-  }
-
-  const projectObj = project.toObject();
-  projectObj.totalPaid = project.totalPaid;
-  projectObj.completionRate = project.completionRate;
-
-  res.json({
-    success: true,
-    data: projectObj,
-  });
-});
-
-// @desc    Create new project
-// @route   POST /api/projects
-// @access  Private (Manager/Admin)
-const createProject = asyncHandler(async (req, res) => {
   const {
-    projectName,
-    employees,
-    budget,
-    deposit,
-    clientId,
-    services,
+    page = 1,
+    limit = 10,
+    status,
+    client,
+    search,
     startDate,
     endDate,
-    deliverables,
-    notes,
+    minBudget,
+    maxBudget,
+  } = req.query;
+
+  const filter = { isActive: true };
+
+  // Apply filters
+  if (status) filter.status = status;
+  if (client) filter.client = client;
+  if (startDate || endDate) {
+    filter.startDate = {};
+    if (startDate) filter.startDate.$gte = new Date(startDate);
+    if (endDate) filter.startDate.$lte = new Date(endDate);
+  }
+  if (minBudget || maxBudget) {
+    filter.budget = {};
+    if (minBudget) filter.budget.$gte = Number(minBudget);
+    if (maxBudget) filter.budget.$lte = Number(maxBudget);
+  }
+
+  // Text search
+  if (search) {
+    filter.$text = { $search: search };
+  }
+
+  const [projects, total] = await Promise.all([
+    Project.find(filter)
+      .populate("client", "name email")
+      .populate("employees.employee", "name position")
+      .populate("services", "name")
+      .populate("createdBy", "name")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit)),
+    Project.countDocuments(filter),
+  ]);
+
+  res.json({
+    success: true,
+    count: projects.length,
+    total,
+    pages: Math.ceil(total / limit),
+    currentPage: Number(page),
+    data: projects.map((project) => ({
+      ...project.toObject(),
+      totalPaid: project.totalPaid,
+      completionRate: project.completionRate,
+      remainingBalance: project.remainingBalance,
+    })),
+  });
+});
+
+/**
+ * @desc    Get single project with full details
+ * @route   GET /api/projects/:id
+ * @access  Private
+ */
+const getProject = asyncHandler(async (req, res) => {
+  const project = await Project.findById(req.params.id)
+    .populate("client", "name email phone companyName")
+    .populate("employees.employee", "name email position department")
+    .populate("services", "name description price")
+    .populate("createdBy", "name email")
+    .populate("installments.addedBy", "name");
+
+  if (!project) {
+    return res.status(404).json({
+      success: false,
+      message: "Project not found",
+    });
+  }
+
+  res.json({
+    success: true,
+    data: {
+      ...project.toObject(),
+      totalPaid: project.totalPaid,
+      completionRate: project.completionRate,
+      remainingBalance: project.remainingBalance,
+    },
+  });
+});
+
+/**
+ * @desc    Create new project
+ * @route   POST /api/projects
+ * @access  Private/Manager
+ */
+const createProject = asyncHandler(async (req, res) => {
+  const {
+    name,
+    description,
+    client,
+    budget,
+    currency,
+    startDate,
+    endDate,
+    employees,
+    services,
   } = req.body;
 
-  // Validate client exists
-  const client = await Client.findById(clientId);
-  if (!client) {
-    return res.status(400).json({ message: "Client not found" });
-  }
-
-  // Validate employees exist
-  if (employees && employees.length > 0) {
-    const employeeIds = employees.map((emp) => emp.employee);
-    const existingEmployees = await Employee.find({
-      _id: { $in: employeeIds },
+  // Validate required fields
+  if (!name || !client || !budget || !startDate) {
+    return res.status(400).json({
+      success: false,
+      message: "Name, client, budget and start date are required",
     });
-    if (existingEmployees.length !== employeeIds.length) {
-      return res
-        .status(400)
-        .json({ message: "One or more employees not found" });
-    }
   }
 
-  // Validate services exist
-  if (services && services.length > 0) {
-    const existingServices = await Service.find({ _id: { $in: services } });
-    if (existingServices.length !== services.length) {
-      return res
-        .status(400)
-        .json({ message: "One or more services not found" });
-    }
+  // Validate references exist
+  try {
+    await Promise.all([
+      validateClient(client),
+      validateEmployees(employees?.map((e) => e.employee)),
+      validateServices(services),
+    ]);
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
   }
 
   const project = await Project.create({
-    projectName,
-    employees: employees || [],
+    name,
+    description,
+    client,
     budget,
-    deposit,
-    client: clientId,
-    services: services || [],
+    currency,
     startDate,
     endDate,
-    deliverables: deliverables || [],
-    notes,
+    employees: employees || [],
+    services: services || [],
+    createdBy: req.user.id,
   });
 
-  const populatedProject = await Project.findById(project._id)
-    .populate("employees.employee", "name email")
-    .populate("client", "name companyName email")
-    .populate("services", "name category");
+  const populated = await Project.findById(project._id)
+    .populate("client", "name")
+    .populate("employees.employee", "name");
 
   res.status(201).json({
     success: true,
-    data: populatedProject,
+    data: populated,
   });
 });
 
-// @desc    Update project
-// @route   PUT /api/projects/:id
-// @access  Private (Manager/Admin)
+/**
+ * @desc    Update project details
+ * @route   PUT /api/projects/:id
+ * @access  Private/Manager
+ */
 const updateProject = asyncHandler(async (req, res) => {
-  let project = await Project.findById(req.params.id);
-
-  if (!project) {
-    return res.status(404).json({ message: "Project not found" });
-  }
-
-  project = await Project.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true,
-  })
-    .populate("employees.employee", "name email")
-    .populate("client", "name companyName email")
-    .populate("services", "name category");
-
-  res.json({
-    success: true,
-    data: project,
-  });
-});
-
-// @desc    Delete project
-// @route   DELETE /api/projects/:id
-// @access  Private (Manager/Admin)
-const deleteProject = asyncHandler(async (req, res) => {
   const project = await Project.findById(req.params.id);
 
   if (!project) {
-    return res.status(404).json({ message: "Project not found" });
+    return res.status(404).json({
+      success: false,
+      message: "Project not found",
+    });
   }
 
-  await project.deleteOne();
+  // Prevent updating certain fields
+  const { createdBy, installments, ...updateData } = req.body;
+
+  const updatedProject = await Project.findByIdAndUpdate(
+    req.params.id,
+    updateData,
+    { new: true, runValidators: true }
+  )
+    .populate("client", "name")
+    .populate("employees.employee", "name");
 
   res.json({
     success: true,
-    message: "Project deleted successfully",
+    data: updatedProject,
   });
 });
 
-// @desc    Add installment to project
-// @route   POST /api/projects/:id/installments
-// @access  Private (Manager/Admin)
+/**
+ * @desc    Add installment to project
+ * @route   POST /api/projects/:id/installments
+ * @access  Private/Manager
+ */
 const addInstallment = asyncHandler(async (req, res) => {
-  const { method, amount, description } = req.body;
+  const { amount, method, receiptNumber, notes } = req.body;
+
+  if (!amount || !method) {
+    return res.status(400).json({
+      success: false,
+      message: "Amount and payment method are required",
+    });
+  }
 
   const project = await Project.findById(req.params.id);
 
   if (!project) {
-    return res.status(404).json({ message: "Project not found" });
+    return res.status(404).json({
+      success: false,
+      message: "Project not found",
+    });
   }
 
   project.installments.push({
-    method,
     amount,
-    description,
+    method,
+    receiptNumber,
+    notes,
+    addedBy: req.user.id,
   });
 
   await project.save();
 
   res.json({
     success: true,
-    data: project,
+    data: {
+      ...project.toObject(),
+      totalPaid: project.totalPaid,
+      completionRate: project.completionRate,
+    },
   });
 });
 
-// @desc    Get project financial details
-// @route   GET /api/projects/:id/financials
-// @access  Private
+/**
+ * @desc    Get project financial summary
+ * @route   GET /api/projects/:id/financials
+ * @access  Private
+ */
 const getProjectFinancials = asyncHandler(async (req, res) => {
   const project = await Project.findById(req.params.id);
 
   if (!project) {
-    return res.status(404).json({ message: "Project not found" });
+    return res.status(404).json({
+      success: false,
+      message: "Project not found",
+    });
   }
-
-  const totalPaid = project.totalPaid;
-  const remainingAmount = project.budget - totalPaid;
-  const completionPercentage =
-    project.budget > 0 ? (totalPaid / project.budget) * 100 : 0;
 
   res.json({
     success: true,
     data: {
       budget: project.budget,
-      deposit: project.deposit,
+      currency: project.currency,
+      totalPaid: project.totalPaid,
+      remainingBalance: project.remainingBalance,
+      completionRate: project.completionRate,
       installments: project.installments,
-      totalPaid,
-      remainingAmount,
-      completionPercentage: completionPercentage.toFixed(2) + "%",
-      paymentHistory: [
-        {
-          type: "Deposit",
-          amount: project.deposit,
-          date: project.createdAt,
-        },
-        ...project.installments.map((installment) => ({
-          type: "Installment",
-          method: installment.method,
-          amount: installment.amount,
-          date: installment.createdAt,
-          description: installment.description,
-        })),
-      ],
     },
   });
 });
 
-// @desc    Get total count of all projects
-// @route   GET /api/projects/total-count
-// @access  Private
-const getTotalProjectsCount = asyncHandler(async (req, res) => {
-  const totalCount = await Project.countDocuments();
-  res.json({ success: true, totalCount });
-});
+/**
+ * @desc    Soft delete project
+ * @route   DELETE /api/projects/:id
+ * @access  Private/Admin
+ */
+const deleteProject = asyncHandler(async (req, res) => {
+  const project = await Project.findById(req.params.id);
 
-// @desc    Get total revenue from all projects (sum of budgets)
-// @route   GET /api/projects/total-revenue
-// @access  Private
-const getTotalProjectsRevenue = asyncHandler(async (req, res) => {
-  const result = await Project.aggregate([
-    {
-      $group: {
-        _id: null,
-        totalRevenue: { $sum: "$budget" },
-      },
-    },
-  ]);
+  if (!project) {
+    return res.status(404).json({
+      success: false,
+      message: "Project not found",
+    });
+  }
 
-  const totalRevenue = result.length > 0 ? result[0].totalRevenue : 0;
+  project.isActive = false;
+  await project.save();
 
-  res.json({ success: true, totalRevenue });
-});
-
-// @desc    Get total expenses from all projects (sum of totalPaid = deposit + installments)
-// @route   GET /api/projects/total-expenses
-// @access  Private
-const getTotalProjectsExpenses = asyncHandler(async (req, res) => {
-  // We need to sum deposit + installments.amount for all projects
-
-  // Use aggregation pipeline to unwind installments and sum amounts
-  const result = await Project.aggregate([
-    {
-      $unwind: {
-        path: "$installments",
-        preserveNullAndEmptyArrays: true,
-      },
-    },
-    {
-      $group: {
-        _id: "$_id",
-        deposit: { $first: "$deposit" },
-        installmentsSum: { $sum: { $ifNull: ["$installments.amount", 0] } },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        totalExpenses: { $sum: { $add: ["$deposit", "$installmentsSum"] } },
-      },
-    },
-  ]);
-
-  const totalExpenses = result.length > 0 ? result[0].totalExpenses : 0;
-
-  res.json({ success: true, totalExpenses });
-});
-
-// @desc    Get total count of finished projects (status = "completed")
-// @route   GET /api/projects/finished-count
-// @access  Private
-const getTotalFinishedProjectsCount = asyncHandler(async (req, res) => {
-  const finishedCount = await Project.countDocuments({ status: "completed" });
-  res.json({ success: true, finishedCount });
-});
-
-// @desc    Get total count of active projects (status != "completed")
-// @route   GET /api/projects/active-count
-// @access  Private
-const getTotalActiveProjectsCount = asyncHandler(async (req, res) => {
-  const activeCount = await Project.countDocuments({
-    status: { $ne: "completed" },
+  res.json({
+    success: true,
+    message: "Project deactivated successfully",
   });
-  res.json({ success: true, activeCount });
 });
+
+// Helper functions
+const validateClient = async (clientId) => {
+  const client = await Client.findById(clientId);
+  if (!client) throw new Error("Client not found");
+  return true;
+};
+
+const validateEmployees = async (employeeIds = []) => {
+  if (employeeIds.length > 0) {
+    const count = await Employee.countDocuments({
+      _id: { $in: employeeIds },
+      isActive: true,
+    });
+    if (count !== employeeIds.length) {
+      throw new Error("One or more employees not found or inactive");
+    }
+  }
+  return true;
+};
+
+const validateServices = async (serviceIds = []) => {
+  if (serviceIds?.length > 0) {
+    const count = await Service.countDocuments({
+      _id: { $in: serviceIds },
+      isActive: true,
+    });
+    if (count !== serviceIds.length) {
+      throw new Error("One or more services not found or inactive");
+    }
+  }
+  return true;
+};
 
 module.exports = {
   getProjects,
@@ -328,16 +334,4 @@ module.exports = {
   deleteProject,
   addInstallment,
   getProjectFinancials,
-  getProjects,
-  getProject,
-  createProject,
-  updateProject,
-  deleteProject,
-  addInstallment,
-  getProjectFinancials,
-  getTotalProjectsCount,
-  getTotalProjectsRevenue,
-  getTotalProjectsExpenses,
-  getTotalFinishedProjectsCount,
-  getTotalActiveProjectsCount,
 };
