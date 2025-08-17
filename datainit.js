@@ -1,170 +1,190 @@
-require("dotenv").config();
 const mongoose = require("mongoose");
 const Department = require("./src/models/Departments");
 const Position = require("./src/models/Position");
 const Skill = require("./src/models/Skill");
-const Employee = require("./src/models/Employee");
 const Counter = require("./src/models/counter");
+require("dotenv").config();
 
-// Database connection
-const connectDB = async () => {
+async function initializeData() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log("Connected to MongoDB");
-  } catch (err) {
-    console.error("Database connection error:", err.message);
-    process.exit(1);
-  }
-};
-// Initialize counters
-const initCounters = async () => {
-  await Counter.deleteMany({});
-  await Counter.create([
-    { _id: "departmentId", seq: 1 },
-    { _id: "positionId", seq: 1 },
-    { _id: "skillId", seq: 1 },
-    { _id: "employeeId", seq: 1 },
-  ]);
-  console.log("Initialized counters");
-};
+    // Connect to MongoDB
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
 
-// Clear existing data
-const clearData = async () => {
-  await Department.deleteMany({});
-  await Position.deleteMany({});
-  await Skill.deleteMany({});
-  await Employee.deleteMany({});
-  console.log("Cleared existing database");
-};
+    console.log("Connected to MongoDB...");
 
-// Create departments
-const createDepartments = async () => {
-  const departments = [
-    { name: "Marketing", description: "Handles all marketing activities" },
-    { name: "Development", description: "Handles all software development" },
-  ];
+    // Reset counters to ensure clean IDs
+    await Counter.deleteMany({});
+    await Counter.create([
+      { _id: "departmentId", seq: 0 },
+      { _id: "PositionId", seq: 0 },
+      { _id: "skillId", seq: 0 },
+    ]);
 
-  const createdDepts = await Department.insertMany(departments);
-  console.log(
-    "Created departments:",
-    createdDepts.map((d) => `${d.name} (ID: ${d._id})`)
-  );
-  return createdDepts;
-};
+    // Clear existing data
+    await Department.deleteMany({});
+    await Position.deleteMany({});
+    await Skill.deleteMany({});
 
-// Create skills
-const createSkills = async () => {
-  const skills = [
-    // Marketing skills
-    { name: "SEO", department: "marketing" },
-    { name: "Social Media", department: "marketing" },
-    { name: "Content Writing", department: "marketing" },
+    console.log("Cleared existing data...");
 
-    // Development skills
-    { name: "JavaScript", department: "development" },
-    { name: "React", department: "development" },
-    { name: "Node.js", department: "development" },
-  ];
+    // 1. Create Departments
+    const marketingDept = await Department.create({
+      name: "Marketing",
+    });
 
-  const createdSkills = await Skill.insertMany(skills);
-  console.log("Created skills:", createdSkills.length);
-  return createdSkills;
-};
+    const softwareDept = await Department.create({
+      name: "Software",
+    });
 
-// Create positions
-const createPositions = async (departments, skills) => {
-  const marketingDept = departments.find((d) => d.name === "Marketing");
-  const devDept = departments.find((d) => d.name === "Development");
+    console.log("Created departments...");
 
-  const seoSkill = skills.find((s) => s.name === "SEO");
-  const jsSkill = skills.find((s) => s.name === "JavaScript");
+    // 2. Create Positions for Marketing Department
+    const marketingPositions = [
+      { name: "Social Media Manager" },
+      { name: "Content Creator" },
+      { name: "Graphic Designer" },
+      { name: "Video Editor" },
+    ];
 
-  const positions = [
-    // Marketing positions
-    {
-      name: "Marketing Specialist",
-      department: marketingDept._id,
-      description: "Handles marketing campaigns",
-      requiredSkills: [seoSkill._id],
-    },
+    const createdMarketingPositions = await Promise.all(
+      marketingPositions.map((pos) =>
+        Position.create({
+          name: pos.name,
+          department: marketingDept._id,
+        })
+      )
+    );
 
-    // Development positions
-    {
-      name: "Frontend Developer",
-      department: devDept._id,
-      description: "Develops user interfaces",
-      requiredSkills: [jsSkill._id],
-    },
-  ];
+    // 3. Create Positions for Software Department
+    const softwarePositions = [
+      { name: "Frontend Developer" },
+      { name: "Backend Developer" },
+      { name: "WordPress Developer" },
+      { name: "PHP Developer" },
+      { name: ".NET Developer" },
+      { name: "DevOps Engineer" },
+    ];
 
-  const createdPositions = await Position.insertMany(positions);
-  console.log(
-    "Created positions:",
-    createdPositions.map((p) => `${p.name} (ID: ${p._id})`)
-  );
-  return createdPositions;
-};
+    const createdSoftwarePositions = await Promise.all(
+      softwarePositions.map((pos) =>
+        Position.create({
+          name: pos.name,
+          department: softwareDept._id,
+        })
+      )
+    );
 
-// Create sample employees
-const createEmployees = async (departments, positions, skills) => {
-  const marketingPosition = positions.find(
-    (p) => p.name === "Marketing Specialist"
-  );
-  const devPosition = positions.find((p) => p.name === "Frontend Developer");
+    console.log("Created positions...");
 
-  const seoSkill = skills.find((s) => s.name === "SEO");
-  const jsSkill = skills.find((s) => s.name === "JavaScript");
+    // 4. Define all skills with their associated positions
+    const skillDefinitions = [
+      // Marketing skills
+      { name: "Social Media Strategy", positions: ["Social Media Manager"] },
+      { name: "Content Planning", positions: ["Social Media Manager"] },
+      { name: "Analytics", positions: ["Social Media Manager"] },
+      { name: "Community Management", positions: ["Social Media Manager"] },
+      { name: "Copywriting", positions: ["Content Creator"] },
+      { name: "SEO Writing", positions: ["Content Creator"] },
+      { name: "Research", positions: ["Content Creator"] },
+      { name: "Editing", positions: ["Content Creator"] },
+      { name: "Adobe Photoshop", positions: ["Graphic Designer"] },
+      { name: "Illustrator", positions: ["Graphic Designer"] },
+      { name: "Typography", positions: ["Graphic Designer"] },
+      { name: "Branding", positions: ["Graphic Designer"] },
+      { name: "Premiere Pro", positions: ["Video Editor"] },
+      { name: "After Effects", positions: ["Video Editor"] },
+      { name: "Color Grading", positions: ["Video Editor"] },
+      { name: "Motion Graphics", positions: ["Video Editor"] },
 
-  const employees = [
-    // Marketing employee
-    {
-      name: "Marketing Person",
-      email: "marketing@example.com",
-      phones: ["1234567890"],
-      departments: [departments.find((d) => d.name === "Marketing")._id],
-      positions: [{ position: marketingPosition._id, isPrimary: true }],
-      skills: [{ skill: seoSkill._id, proficiencyLevel: "advanced" }],
-      availability: "available",
-      employeeType: "full_time",
-    },
+      // Software skills (shared between positions)
+      { name: "HTML/CSS", positions: ["Frontend Developer"] },
+      {
+        name: "JavaScript",
+        positions: ["Frontend Developer", "Backend Developer"],
+      },
+      { name: "React", positions: ["Frontend Developer"] },
+      { name: "Responsive Design", positions: ["Frontend Developer"] },
+      { name: "Node.js", positions: ["Backend Developer"] },
+      { name: "Database Design", positions: ["Backend Developer"] },
+      { name: "API Development", positions: ["Backend Developer"] },
+      { name: "System Architecture", positions: ["Backend Developer"] },
+      {
+        name: "PHP",
+        positions: [
+          "Backend Developer",
+          "WordPress Developer",
+          "PHP Developer",
+        ],
+      },
+      { name: "WordPress CMS", positions: ["WordPress Developer"] },
+      { name: "Theme Development", positions: ["WordPress Developer"] },
+      { name: "Plugin Development", positions: ["WordPress Developer"] },
+      { name: "Laravel", positions: ["PHP Developer"] },
+      { name: "MySQL", positions: ["PHP Developer"] },
+      { name: "RESTful APIs", positions: ["PHP Developer"] },
+      { name: "C#", positions: [".NET Developer"] },
+      { name: "ASP.NET", positions: [".NET Developer"] },
+      { name: "SQL Server", positions: [".NET Developer"] },
+      { name: "MVC Architecture", positions: [".NET Developer"] },
+      { name: "Docker", positions: ["DevOps Engineer"] },
+      { name: "Kubernetes", positions: ["DevOps Engineer"] },
+      { name: "CI/CD Pipelines", positions: ["DevOps Engineer"] },
+      { name: "Cloud Infrastructure", positions: ["DevOps Engineer"] },
+    ];
 
-    // Development employee
-    {
-      name: "Developer Person",
-      email: "developer@example.com",
-      phones: ["9876543210"],
-      departments: [departments.find((d) => d.name === "Development")._id],
-      positions: [{ position: devPosition._id, isPrimary: true }],
-      skills: [{ skill: jsSkill._id, proficiencyLevel: "expert" }],
-      availability: "available",
-      employeeType: "full_time",
-    },
-  ];
+    // Combine all positions for easy lookup
+    const allPositions = [
+      ...createdMarketingPositions,
+      ...createdSoftwarePositions,
+    ];
+    const positionMap = {};
+    allPositions.forEach((pos) => {
+      positionMap[pos.name] = pos._id;
+    });
 
-  const createdEmployees = await Employee.insertMany(employees);
-  console.log("Created employees:", createdEmployees.length);
-  return createdEmployees;
-};
+    // Create skills and associate them with positions
+    const createdSkills = [];
+    for (const skillDef of skillDefinitions) {
+      // For each position this skill belongs to
+      for (const positionName of skillDef.positions) {
+        const positionId = positionMap[positionName];
+        if (!positionId) {
+          console.warn(`Position not found: ${positionName}`);
+          continue;
+        }
 
-// Main initialization function
-const initializeData = async () => {
-  try {
-    await connectDB();
-    await clearData();
-    await initCounters();
+        // Create the skill for this specific position
+        const skill = await Skill.create({
+          name: skillDef.name,
+          position: positionId,
+        });
+        createdSkills.push(skill);
 
-    const departments = await createDepartments();
-    const skills = await createSkills();
-    const positions = await createPositions(departments, skills);
-    await createEmployees(departments, positions, skills);
+        // Add the skill to the position's skills array
+        await Position.findByIdAndUpdate(positionId, {
+          $addToSet: { skills: skill._id },
+        });
+      }
+    }
 
-    console.log("Database initialization complete!");
+    console.log("Created and associated skills...");
+    console.log("Initialization completed successfully!");
+
+    // Display summary
+    console.log("\n=== Initialization Summary ===");
+    console.log(`Departments Created: 2 (Marketing, Software)`);
+    console.log(`Marketing Positions: ${createdMarketingPositions.length}`);
+    console.log(`Software Positions: ${createdSoftwarePositions.length}`);
+    console.log(`Total Skill-Position Associations: ${createdSkills.length}`);
+
     process.exit(0);
-  } catch (err) {
-    console.error("Error initializing data:", err);
+  } catch (error) {
+    console.error("Initialization failed:", error);
     process.exit(1);
   }
-};
+}
 
-// Run the initialization
 initializeData();
