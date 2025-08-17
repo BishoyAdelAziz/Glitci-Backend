@@ -3,8 +3,15 @@ const Employee = require("../models/Employee");
 const Department = require("../models/Departments");
 const Position = require("../models/Position");
 const Skill = require("../models/Skill");
-
-// Helper function to validate departments exist
+const Project = require("../models/Project");
+const Counter = require("../models/counter");
+const mongoose = require("mongoose");
+/**
+ * @desc    Validate department IDs exist and are active
+ * @param   {string[]} departmentIds - Array of department IDs to validate
+ * @return  {Promise<Array>} Array of valid departments
+ * @throws  {Error} If any department is not found or inactive
+ */
 const validateDepartments = async (departmentIds) => {
   const departments = await Department.find({
     _id: { $in: departmentIds },
@@ -16,65 +23,88 @@ const validateDepartments = async (departmentIds) => {
   return departments;
 };
 
-// Helper function to validate Positions and their department associations
-const validatePositions = async (Positions, departmentIds) => {
-  const PositionIds = Positions.map((r) => r.Position);
-  const PositionObjects = await Position.find({
-    _id: { $in: PositionIds },
+/**
+ * @desc    Validate position IDs exist and are active
+ * @param   {string[]} positionIds - Array of position IDs to validate
+ * @return  {Promise<Array>} Array of valid positions
+ * @throws  {Error} If any position is not found or inactive
+ */
+const validatePositions = async (positionIds) => {
+  const positions = await Position.find({
+    _id: { $in: positionIds },
     isActive: true,
   });
-
-  if (PositionObjects.length !== PositionIds.length) {
-    throw new Error("One or more Positions not found or inactive");
+  if (positions.length !== positionIds.length) {
+    throw new Error("One or more positions not found or inactive");
   }
-
-  // Validate that each Position belongs to one of the selected departments
-  for (const PositionObj of PositionObjects) {
-    if (!departmentIds.includes(PositionObj.department)) {
-      throw new Error(
-        `Position "${PositionObj.name}" is not available in the selected departments`
-      );
-    }
-  }
-
-  return PositionObjects;
+  return positions;
 };
 
-// Helper function to validate skills
-const validateSkills = async (skills) => {
-  const skillIds = skills.map((s) => s.skill);
-  const skillObjects = await Skill.find({
+/**
+ * @desc    Validate skill IDs exist and are active
+ * @param   {string[]} skillIds - Array of skill IDs to validate
+ * @return  {Promise<Array>} Array of valid skills
+ * @throws  {Error} If any skill is not found or inactive
+ */
+const validateSkills = async (skillIds) => {
+  const skills = await Skill.find({
     _id: { $in: skillIds },
-    isActive: true,
   });
-
-  if (skillObjects.length !== skillIds.length) {
+  if (skills.length !== skillIds.length) {
     throw new Error("One or more skills not found or inactive");
   }
-
-  return skillObjects;
+  return skills;
 };
 
-// @desc    Get all employees with advanced filtering
+/**
+ * @desc    Validate project IDs exist and are active
+ * @param   {string[]} projectIds - Array of project IDs to validate
+ * @return  {Promise<Array>} Array of valid projects
+ * @throws  {Error} If any project is not found or inactive
+ */
+const validateProjects = async (projectIds) => {
+  const projects = await Project.find({
+    _id: { $in: projectIds },
+    isActive: true,
+  });
+  if (projects.length !== projectIds.length) {
+    throw new Error("One or more projects not found or inactive");
+  }
+  return projects;
+};
+
+/**
+ * @desc    Get all employees with filtering and pagination
+ * @route   GET /api/employees
+ * @access  Private
+ * @param   {string} [department] - Filter by department ID
+ * @param   {string} [position] - Filter by position ID
+ * @param   {string} [skill] - Filter by skill ID
+ * @param   {string} [project] - Filter by project ID
+ * @param   {string} [search] - Search by name or email
+ * @param   {boolean} [isActive=true] - Filter by active status
+ * @param   {number} [page=1] - Page number
+ * @param   {number} [limit=10] - Items per page
+ * @return  {Object} Paginated list of employees with completion rates
+ */
 const getEmployees = asyncHandler(async (req, res) => {
   const {
     page = 1,
     limit = 10,
     department,
-    Position,
+    position,
     skill,
+    project,
     search,
-    availability,
-    employeeType,
+    isActive = true,
   } = req.query;
 
-  const filter = { isActive: true };
+  const filter = { isActive };
 
-  if (department) filter.departments = { $in: [department] };
-  if (Position) filter["Positions.Position"] = { $in: [Position] };
-  if (skill) filter["skills.skill"] = { $in: [skill] };
-  if (availability) filter.availability = availability;
-  if (employeeType) filter.employeeType = employeeType;
+  if (department) filter.departments = department;
+  if (position) filter.positions = position;
+  if (skill) filter.skills = skill;
+  if (project) filter["projects.project"] = project;
 
   if (search) {
     filter.$or = [
@@ -88,11 +118,18 @@ const getEmployees = asyncHandler(async (req, res) => {
       .sort({ name: 1 })
       .skip((page - 1) * limit)
       .limit(limit)
-      .populate("departments", "name")
-      .populate("Positions.Position", "name")
-      .populate("skills.skill", "name category"),
+      .populate("departmentDetails", "name")
+      .populate("positionDetails", "name")
+      .populate("skillDetails", "name")
+      .populate("projectDetails", "name"),
     Employee.countDocuments(filter),
   ]);
+
+  // Calculate completion rates for each employee
+  const employeesWithCompletion = employees.map((employee) => ({
+    ...employee.toObject(),
+    completionRates: employee.completionRates,
+  }));
 
   res.json({
     success: true,
@@ -100,241 +137,22 @@ const getEmployees = asyncHandler(async (req, res) => {
     total,
     pages: Math.ceil(total / limit),
     currentPage: Number(page),
-    data: employees,
+    data: employeesWithCompletion,
   });
 });
-
-// @desc    Get single employee
-const getEmployee = asyncHandler(async (req, res) => {
-  const employee = await Employee.findById(req.params.id)
-    .populate("departments", "name description")
-    .populate("Positions.Position", "name description level")
-    .populate("skills.skill", "name category level")
-    .populate("manager", "name email");
-
-  if (!employee) {
-    return res.status(404).json({
-      success: false,
-      message: "Employee not found",
-    });
-  }
-
-  res.json({
-    success: true,
-    data: employee,
-  });
-});
-
-// @desc    Create employee with comprehensive validation
-const createEmployee = asyncHandler(async (req, res) => {
-  const {
-    name,
-    email,
-    phones,
-    departments,
-    Positions,
-    skills,
-    availability,
-    employeeType,
-    location,
-    manager,
-  } = req.body;
-
-  // Validate required fields
-  if (!name || !email || !departments || !Positions || !skills) {
-    return res.status(400).json({
-      success: false,
-      message: "Name, email, departments, Positions, and skills are required",
-    });
-  }
-
-  // Check if email already exists
-  if (await Employee.findOne({ email: email.toLowerCase() })) {
-    return res.status(400).json({
-      success: false,
-      message: "Email already exists",
-    });
-  }
-
-  try {
-    // Validate departments
-    const validDepartments = await validateDepartments(departments);
-
-    // Validate Positions and their department associations
-    const validPositions = await validatePositions(Positions, departments);
-
-    // Validate skills
-    const validSkills = await validateSkills(skills);
-
-    // Validate manager if provided
-    let managerEmployee = null;
-    if (manager) {
-      managerEmployee = await Employee.findById(manager);
-      if (!managerEmployee) {
-        return res.status(400).json({
-          success: false,
-          message: "Manager not found",
-        });
-      }
-    }
-
-    // Ensure only one primary Position
-    const primaryPositions = Positions.filter((r) => r.isPrimary);
-    if (primaryPositions.length > 1) {
-      return res.status(400).json({
-        success: false,
-        message: "Only one primary Position is allowed",
-      });
-    }
-
-    // If no primary Position specified, make the first one primary
-    if (primaryPositions.length === 0 && Positions.length > 0) {
-      Positions[0].isPrimary = true;
-    }
-
-    const employee = await Employee.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      phones: phones || [],
-      departments,
-      Positions: Positions.map((r) => ({
-        Position: r.Position,
-        isPrimary: r.isPrimary || false,
-        startDate: r.startDate || new Date(),
-      })),
-      skills: skills.map((s) => ({
-        skill: s.skill,
-        proficiencyLevel: s.proficiencyLevel || "intermediate",
-        verified: s.verified || false,
-        verifiedBy: s.verifiedBy || null,
-      })),
-      availability: availability || "available",
-      employeeType: employeeType || "full_time",
-      location: location || "",
-      manager: manager || null,
-    });
-
-    // Populate the created employee for response
-    const populatedEmployee = await Employee.findById(employee._id)
-      .populate("departments", "name")
-      .populate("Positions.Position", "name level")
-      .populate("skills.skill", "name category")
-      .populate("manager", "name email");
-
-    res.status(201).json({
-      success: true,
-      message: "Employee created successfully",
-      data: populatedEmployee,
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
-// @desc    Update employee
-const updateEmployee = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const updateData = req.body;
-
-  const employee = await Employee.findById(id);
-  if (!employee) {
-    return res.status(404).json({
-      success: false,
-      message: "Employee not found",
-    });
-  }
-
-  try {
-    // Validate departments if being updated
-    if (updateData.departments) {
-      await validateDepartments(updateData.departments);
-    }
-
-    // Validate Positions if being updated
-    if (updateData.Positions) {
-      const targetDepartments = updateData.departments || employee.departments;
-      await validatePositions(updateData.Positions, targetDepartments);
-
-      // Ensure only one primary Position
-      const primaryPositions = updateData.Positions.filter((r) => r.isPrimary);
-      if (primaryPositions.length > 1) {
-        return res.status(400).json({
-          success: false,
-          message: "Only one primary Position is allowed",
-        });
-      }
-    }
-
-    // Validate skills if being updated
-    if (updateData.skills) {
-      await validateSkills(updateData.skills);
-    }
-
-    // Validate manager if being updated
-
-    // Update email validation
-    if (updateData.email && updateData.email !== employee.email) {
-      const existingEmployee = await Employee.findOne({
-        email: updateData.email.toLowerCase(),
-        _id: { $ne: id },
-      });
-      if (existingEmployee) {
-        return res.status(400).json({
-          success: false,
-          message: "Email already exists",
-        });
-      }
-    }
-
-    const updatedEmployee = await Employee.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    })
-      .populate("departments", "name")
-      .populate("Positions.Position", "name level")
-      .populate("skills.skill", "name category");
-
-    res.json({
-      success: true,
-      message: "Employee updated successfully",
-      data: updatedEmployee,
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
-// @desc    Delete employee (soft delete)
-const deleteEmployee = asyncHandler(async (req, res) => {
-  const employee = await Employee.findById(req.params.id);
-
-  if (!employee) {
-    return res.status(404).json({
-      success: false,
-      message: "Employee not found",
-    });
-  }
-
-  // Soft delete by setting isActive to false
-  employee.isActive = false;
-  await employee.save();
-
-  res.json({
-    success: true,
-    message: "Employee deactivated successfully",
-  });
-});
-
-// @desc    Get employees by department
+/**
+ * @desc    Get all employees in a specific department
+ * @route   GET /api/employees/department/:departmentId
+ * @access  Private
+ * @param   {string} departmentId - Department ID to filter by
+ * @param   {number} [page=1] - Page number for pagination
+ * @param   {number} [limit=10] - Number of items per page
+ * @param   {boolean} [isActive=true] - Filter by active status
+ * @return  {Object} Paginated list of employees in the department with completion rates
+ */
 const getEmployeesByDepartment = asyncHandler(async (req, res) => {
   const { departmentId } = req.params;
-  const { page = 1, limit = 10 } = req.query;
+  const { page = 1, limit = 10, isActive = true } = req.query;
 
   // Validate department exists
   const department = await Department.findById(departmentId);
@@ -345,21 +163,32 @@ const getEmployeesByDepartment = asyncHandler(async (req, res) => {
     });
   }
 
+  // Build query filter
+  const filter = {
+    departments: departmentId,
+    isActive: isActive === "true", // Convert string to boolean
+  };
+
+  // Execute queries in parallel
   const [employees, total] = await Promise.all([
-    Employee.find({
-      departments: { $in: [departmentId] },
-      isActive: true,
-    })
+    Employee.find(filter)
       .sort({ name: 1 })
       .skip((page - 1) * limit)
-      .limit(limit)
-      .populate("Positions.Position", "name")
-      .populate("skills.skill", "name"),
-    Employee.countDocuments({
-      departments: { $in: [departmentId] },
-      isActive: true,
-    }),
+      .limit(Number(limit))
+      .populate("positionDetails", "name")
+      .populate("skillDetails", "name category")
+      .populate({
+        path: "projects.project",
+        select: "name budget",
+      }),
+    Employee.countDocuments(filter),
   ]);
+
+  // Calculate completion rates for each employee
+  const employeesWithCompletion = employees.map((employee) => ({
+    ...employee.toObject(),
+    completionRates: employee.completionRates,
+  }));
 
   res.json({
     success: true,
@@ -367,52 +196,252 @@ const getEmployeesByDepartment = asyncHandler(async (req, res) => {
     total,
     pages: Math.ceil(total / limit),
     currentPage: Number(page),
-    data: employees,
+    data: employeesWithCompletion,
   });
 });
+// @desc    Get single employee with full details
+const getEmployee = asyncHandler(async (req, res) => {
+  const employee = await Employee.findById(req.params.id)
+    .populate("departmentDetails", "name")
+    .populate("positionDetails", "name")
+    .populate("skillDetails", "name")
+    .populate("projectDetails", "name budget")
+    .populate("projects.installments.addedBy", "name");
 
-// @desc    Get available options for employee creation
-const getEmployeeOptions = asyncHandler(async (req, res) => {
-  const [departments, Positions, skills] = await Promise.all([
-    Department.find({ isActive: true })
-      .select("_id name description")
-      .sort({ name: 1 }),
-    Position.find({ isActive: true })
-      .select("_id name description department level")
-      .populate("department", "name")
-      .sort({ name: 1 }),
-    Skill.find({ isActive: true })
-      .select("_id name description category level")
-      .sort({ name: 1 }),
-  ]);
+  if (!employee) {
+    return res.status(404).json({
+      success: false,
+      message: "Employee not found",
+    });
+  }
+
+  // Add completion rates to the response
+  const employeeData = {
+    ...employee.toObject(),
+    completionRates: employee.completionRates,
+  };
 
   res.json({
     success: true,
-    data: {
-      departments: departments.map((dept) => ({
-        id: dept._id,
-        name: dept.name,
-        description: dept.description,
-      })),
-      Positions: Positions.map((Position) => ({
-        id: Position._id,
-        name: Position.name,
-        description: Position.description,
-        department: {
-          id: Position.department._id,
-          name: Position.department.name,
-        },
-        level: Position.level,
-      })),
-      skills: skills.map((skill, idx) => ({
-        id: skill._id,
-        name: skill.name,
-        description: skill.description,
-        category: skill.category,
-        level: skill.level,
-        isPrimary: idx === 0 ? true : false,
-      })),
-    },
+    data: employeeData,
+  });
+});
+
+// @desc    Create employee
+// Quick fix for createEmployee function
+const createEmployee = asyncHandler(async (req, res) => {
+  try {
+    const { name, email, departments, positions, skills } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !departments || !positions || !skills) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email, departments, positions, and skills are required",
+      });
+    }
+
+    // Check email uniqueness
+    if (await Employee.findOne({ email: email.toLowerCase() })) {
+      return res.status(400).json({
+        success: false,
+        message: "Email already exists",
+      });
+    }
+
+    // Create employee - ID will be auto-generated
+    const employee = new Employee({
+      name,
+      email: email.toLowerCase(),
+      departments,
+      positions,
+      skills,
+      projects: [],
+    });
+
+    await employee.save();
+
+    // Populate response data
+    const populatedEmployee = await Employee.findById(employee._id)
+      .populate("departmentDetails", "name")
+      .populate("positionDetails", "name")
+      .populate("skillDetails", "name");
+
+    res.status(201).json({
+      success: true,
+      data: populatedEmployee,
+    });
+  } catch (error) {
+    console.error("Create employee error:", error);
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate key error - please try again",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error creating employee: " + error.message,
+    });
+  }
+});
+/**
+ * @desc    Get single employee by ID with full details
+ * @route   GET /api/employees/:id
+ * @access  Private
+ * @param   {string} id - Employee ID
+ * @return  {Object} Employee details with populated references and completion rates
+ */
+const updateEmployee = asyncHandler(async (req, res) => {
+  try {
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    const { email, departments, positions, skills, projects } = req.body;
+
+    // Validate email uniqueness if changed
+    if (email && email !== employee.email) {
+      if (
+        await Employee.findOne({
+          email: email.toLowerCase(),
+          _id: { $ne: employee._id },
+        })
+      ) {
+        throw new Error("Email already exists");
+      }
+    }
+
+    // Validate references if being updated
+    if (departments) await validateDepartments(departments);
+    if (positions) await validatePositions(positions);
+    if (skills) await validateSkills(skills);
+    if (projects) await validateProjects(projects.map((p) => p.project));
+
+    /**
+     * @desc    Update employee details
+     * @route   PATCH /api/employees/:id
+     * @access  Private/Admin
+     * @param   {string} id - Employee ID
+     * @param   {Object} updateData - Fields to update
+     * @return  {Object} Updated employee with populated references
+     */
+    const updatedEmployee = await Employee.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    )
+      .populate("departmentDetails", "name")
+      .populate("positionDetails", "name")
+      .populate("skillDetails", "name");
+
+    res.json({
+      success: true,
+      data: updatedEmployee,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * @desc    Add installment to employee's project
+ * @route   POST /api/employees/:employeeId/projects/:projectId/installments
+ * @access  Private/Manager
+ * @param   {string} employeeId - Employee ID
+ * @param   {string} projectId - Project ID
+ * @param   {number} amount - Installment amount in EGP
+ * @param   {string} addedBy - User ID who added the installment
+ * @return  {Object} Updated employee with new installment
+ */
+const addInstallment = asyncHandler(async (req, res) => {
+  const { employeeId, projectId } = req.params;
+  const { amount, addedBy } = req.body;
+
+  try {
+    // Validate amount
+    if (!amount || amount <= 0) {
+      throw new Error("Amount must be a positive number");
+    }
+
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    // Find the project
+    const projectIndex = employee.projects.findIndex(
+      (p) => p.project.toString() === projectId
+    );
+
+    if (projectIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found for this employee",
+      });
+    }
+
+    // Add installment
+    employee.projects[projectIndex].installments.push({
+      amount,
+      addedBy,
+      date: new Date(),
+    });
+
+    await employee.save();
+
+    // Get updated employee with populated data
+    const updatedEmployee = await Employee.findById(employeeId)
+      .populate("projects.project", "name")
+      .populate("projects.installments.addedBy", "name");
+
+    res.json({
+      success: true,
+      data: updatedEmployee,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * @desc    Deactivate employee (soft delete)
+ * @route   DELETE /api/employees/:id
+ * @access  Private/Admin
+ * @param   {string} id - Employee ID
+ * @return  {Object} Success message
+ */
+const deleteEmployee = asyncHandler(async (req, res) => {
+  const employee = await Employee.findById(req.params.id);
+
+  if (!employee) {
+    return res.status(404).json({
+      success: false,
+      message: "Employee not found",
+    });
+  }
+
+  employee.isActive = false;
+  await employee.save();
+
+  res.json({
+    success: true,
+    message: "Employee deactivated successfully",
   });
 });
 
@@ -421,7 +450,7 @@ module.exports = {
   getEmployee,
   createEmployee,
   updateEmployee,
+  addInstallment,
   deleteEmployee,
   getEmployeesByDepartment,
-  getEmployeeOptions,
 };
