@@ -1,83 +1,161 @@
 const asyncHandler = require("express-async-handler");
 const Skill = require("../models/Skill");
-const Role = require("../models/Position");
+const Position = require("../models/Position");
 
-// @desc    Get all skills
+// @desc    Get all skills with their position and department info
 // @route   GET /api/skills
 // @access  Private
 const getSkills = asyncHandler(async (req, res) => {
-  const skills = await Skill.find()
-    .select("_id name category")
-    .populate("role", "_id name");
+  const skills = await Skill.find().populate({
+    path: "positionDetails",
+    select: "_id name",
+    populate: {
+      path: "departmentDetails",
+      select: "_id name",
+    },
+  });
+
   res.json({
     success: true,
     data: skills.map((skill) => ({
       id: skill._id,
       name: skill.name,
-      category: skill.category,
+      position: {
+        id: skill.positionDetails._id,
+        name: skill.positionDetails.name,
+        department: {
+          id: skill.positionDetails.departmentDetails._id,
+          name: skill.positionDetails.departmentDetails.name,
+        },
+      },
     })),
   });
 });
 
-// @desc    Get single skill
+// @desc    Get single skill with position and department info
 // @route   GET /api/skills/:id
 // @access  Private
 const getSkill = asyncHandler(async (req, res) => {
-  const skill = await Skill.findById(req.params.id);
+  const skill = await Skill.findById(req.params.id).populate({
+    path: "positionDetails",
+    select: "_id name description",
+    populate: {
+      path: "departmentDetails",
+      select: "_id name",
+    },
+  });
+
   if (!skill) {
     return res.status(404).json({
       success: false,
       message: "Skill not found",
     });
   }
+
   res.json({
     success: true,
     data: {
       id: skill._id,
       name: skill.name,
-      role: skill.role,
+      position: {
+        id: skill.positionDetails._id,
+        name: skill.positionDetails.name,
+        description: skill.positionDetails.description,
+        department: {
+          id: skill.positionDetails.departmentDetails._id,
+          name: skill.positionDetails.departmentDetails.name,
+        },
+      },
     },
   });
 });
-
-// @desc    Create skill
+// @desc    Create skill and assign to positions (only new associations)
 // @route   POST /api/skills
 // @access  Private (Admin/Manager)
 const createSkill = asyncHandler(async (req, res) => {
-  const { name, category } = req.body;
+  const { name, positionId } = req.body;
 
-  if (!name) {
+  if (!name || !positionId) {
     return res.status(400).json({
       success: false,
-      message: "Name is required",
+      message: "Skill name and position ID are required",
     });
   }
-  if (!category) {
-    return res.status(400).json({
-      success: false,
-      message: "Category is required",
-    });
-  }
-  const skill = await Skill.create({
-    name: name.toLowerCase(),
-    category: category || "technical",
-  });
 
-  res.status(201).json({
-    success: true,
-    data: {
-      id: skill._id,
-      name: skill.name,
-      category: skill.category,
-    },
-  });
+  // Convert to array if single positionId provided
+  const positionIds = Array.isArray(positionId) ? positionId : [positionId];
+  const normalizedName = name.toLowerCase().trim();
+
+  try {
+    // Verify all positions exist
+    const positions = await Position.find({ _id: { $in: positionIds } });
+    if (positions.length !== positionIds.length) {
+      const missingIds = positionIds.filter(
+        (id) => !positions.some((p) => p._id.equals(id))
+      );
+      return res.status(404).json({
+        success: false,
+        message: `Positions not found: ${missingIds.join(", ")}`,
+      });
+    }
+
+    // Check which positions already have this skill
+    const existingSkills = await Skill.find({
+      name: normalizedName,
+      position: { $in: positionIds },
+    });
+
+    const existingPositionIds = existingSkills.map((s) =>
+      s.position.toString()
+    );
+    const newPositionIds = positionIds.filter(
+      (id) => !existingPositionIds.includes(id.toString())
+    );
+
+    // Create skills only for new positions
+    const createdSkills = await Promise.all(
+      newPositionIds.map(async (pid) => {
+        const skill = await Skill.create({
+          name: normalizedName,
+          position: pid,
+        });
+
+        // Add skill to position's skills array
+        await Position.findByIdAndUpdate(pid, {
+          $addToSet: { skills: skill._id },
+        });
+
+        return skill;
+      })
+    );
+
+    // Combine results
+    const allSkills = [...existingSkills, ...createdSkills];
+
+    res.status(201).json({
+      success: true,
+      data: {
+        skillName: normalizedName,
+        associations: allSkills.map((s) => ({
+          skillId: s._id,
+          positionId: s.position,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Skill creation failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating skill",
+      error: error.message,
+    });
+  }
 });
-
 // @desc    Update skill
 // @route   PATCH /api/skills/:id
 // @access  Private (Admin/Manager)
 const updateSkill = asyncHandler(async (req, res) => {
-  const { name, category } = req.body;
+  const { name } = req.body;
   const skill = await Skill.findById(req.params.id);
 
   if (!skill) {
@@ -87,23 +165,38 @@ const updateSkill = asyncHandler(async (req, res) => {
     });
   }
 
-  if (name) skill.name = name.toLowerCase().trim();
-  if (category) skill.category = category;
-  await skill.save();
+  if (name) {
+    // Check if new name already exists for this position
+    const existingSkill = await Skill.findOne({
+      name: name.toLowerCase().trim(),
+      position: skill.position,
+      _id: { $ne: skill._id },
+    });
+
+    if (existingSkill) {
+      return res.status(400).json({
+        success: false,
+        message: "Skill name already exists for this position",
+      });
+    }
+
+    skill.name = name.toLowerCase().trim();
+    await skill.save();
+  }
 
   res.json({
     success: true,
     data: {
       id: skill._id,
       name: skill.name,
-      category: skill.category,
+      positionId: skill.position,
     },
   });
 });
 
 // @desc    Delete skill
 // @route   DELETE /api/skills/:id
-// @access  Private (Admin/Manager)
+// @access  Private (Admin)
 const deleteSkill = asyncHandler(async (req, res) => {
   const skill = await Skill.findById(req.params.id);
 
@@ -114,47 +207,51 @@ const deleteSkill = asyncHandler(async (req, res) => {
     });
   }
 
-  // Check if skill is used in any roles
-  const rolesCount = await Role.countDocuments({ skills: skill._id });
-  if (rolesCount > 0) {
-    return res.status(400).json({
+  // Remove skill from position's skills array
+  await Position.findByIdAndUpdate(skill.position, {
+    $pull: { skills: skill._id },
+  });
+
+  await skill.deleteOne();
+
+  res.json({
+    success: true,
+    message: "Skill deleted successfully",
+  });
+});
+
+// @desc    Get skills for a specific position
+// @route   GET /api/skills/by-position/:positionId
+// @access  Private
+const getSkillsByPosition = asyncHandler(async (req, res) => {
+  const { positionId } = req.params;
+
+  // Verify the position exists
+  const position = await Position.findById(positionId);
+  if (!position) {
+    return res.status(404).json({
       success: false,
-      message: "Cannot delete skill assigned to roles",
+      message: "Position not found",
     });
   }
 
-  await skill.deleteOne();
-  res.json({
-    success: true,
-    message: "Skill deleted",
-  });
-});
-// @desc    Get skills for a given role
-// @route   GET /api/skills/by-role/:roleId
-// @access  Private
-const getSkillsByRole = asyncHandler(async (req, res) => {
-  const { roleId } = req.params;
-
-  // Optional: verify the role exists
-  const roleExists = await Role.exists({ _id: roleId });
-  if (!roleExists) {
-    return res.status(404).json({ success: false, message: "Role not found" });
-  }
-
-  // Find all skills whose `role` field matches
-  const skills = await Skill.find({ role: roleId }).select("_id name");
+  // Get all skills for this position
+  const skills = await Skill.find({ position: positionId });
 
   res.json({
     success: true,
-    data: skills.map((s) => ({ id: s._id, name: s.name })),
+    data: skills.map((skill) => ({
+      id: skill._id,
+      name: skill.name,
+    })),
   });
 });
 
 module.exports = {
   getSkills,
   getSkill,
-  getSkillsByRole,
   createSkill,
   updateSkill,
   deleteSkill,
+  getSkillsByPosition,
 };
