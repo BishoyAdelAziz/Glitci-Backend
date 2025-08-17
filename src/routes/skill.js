@@ -1,10 +1,10 @@
 const express = require("express");
 const {
   createSkill,
-  updateSkill,
   deleteSkill,
   getSkill,
-  getSkillsByRole,
+  getSkillsByPosition,
+  updateSkill,
 } = require("../controllers/skillController");
 const router = express.Router();
 
@@ -13,6 +13,6 @@ router.post("/", createSkill);
 router.patch("/:id", updateSkill);
 router.delete("/:id", deleteSkill);
 // new route for skills by role
-router.get("/skills/by-role/:roleId", getSkillsByRole);
+router.get("/positions/:positionId", getSkillsByPosition);
 
 module.exports = router;

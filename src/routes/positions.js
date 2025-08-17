@@ -6,15 +6,13 @@ const {
   updatePosition,
   deletePosition,
 } = require("../controllers/positionController");
-const { protect, manager, admin } = require("../middleware/auth");
 
 const router = express.Router();
 
 // Protect all routes
-router.use(protect);
 
 // GET /api/Positions/department/:departmentId - Get Positions by department
-router.get("/:departmentId", getPositionsByDepartment);
+router.get("/department/:departmentId", getPositionsByDepartment);
 
 // GET /api/Positions/:id - Get single Position
 router.get("/:id", getPosition);

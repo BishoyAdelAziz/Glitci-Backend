@@ -3,8 +3,8 @@ const {
   getDepartment,
   getDepartments,
   createDepartment,
-  updateDepartment,
   deleteDepartment,
+  updateDepartment,
 } = require("../controllers/departmentsController");
 const router = express.Router();
 

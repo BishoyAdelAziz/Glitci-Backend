@@ -6,22 +6,14 @@ const {
   createEmployee,
   updateEmployee,
   deleteEmployee,
+  addInstallment,
   getEmployeesByDepartment,
-  getEmployeeOptions,
 } = require("../controllers/employeeController");
-const { protect, manager, admin } = require("../middleware/auth");
 
-// Protect all routes
-router.use(protect);
-
-// GET /api/employees/options - Get available options for employee creation (no auth needed for options)
-router.get("/options", getEmployeeOptions);
+// ===== PROTECTED ROUTES =====
 
 // GET /api/employees - Get all employees
 router.get("/", getEmployees);
-
-// POST /api/employees - Create new employee (manager+ only)
-router.post("/", manager, createEmployee);
 
 // GET /api/employees/department/:departmentId - Get employees by department
 router.get("/department/:departmentId", getEmployeesByDepartment);
@@ -29,10 +21,20 @@ router.get("/department/:departmentId", getEmployeesByDepartment);
 // GET /api/employees/:id - Get single employee
 router.get("/:id", getEmployee);
 
-// PATCH /api/employees/:id - Update employee (manager+ only)
-router.patch("/:id", manager, updateEmployee);
+// ===== MANAGER+ ROUTES =====
 
-// DELETE /api/employees/:id - Delete employee (admin only)
-router.delete("/:id", admin, deleteEmployee);
+// POST /api/employees - Create new employee
+router.post("/", createEmployee);
+
+// PATCH /api/employees/:id - Update employee
+router.patch("/:id", updateEmployee);
+
+// POST /api/employees/:employeeId/projects/:projectId/installments - Add installment
+router.post("/:employeeId/projects/:projectId/installments", addInstallment);
+
+// ===== ADMIN ONLY ROUTES =====
+
+// DELETE /api/employees/:id - Delete employee
+router.delete("/:id", deleteEmployee);
 
 module.exports = router;
