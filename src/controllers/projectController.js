@@ -2,7 +2,6 @@ const asyncHandler = require("express-async-handler");
 const Project = require("../models/Project");
 const Employee = require("../models/Employee");
 const Service = require("../models/Service");
-const Client = require("../models/Client");
 const User = require("../models/User");
 
 /**
@@ -46,7 +45,6 @@ const getProjects = asyncHandler(async (req, res) => {
 
   const [projects, total] = await Promise.all([
     Project.find(filter)
-      .populate("client", "name email")
       .populate("employees.employee", "name position")
       .populate("services", "name")
       .populate("createdBy", "name")
@@ -62,12 +60,7 @@ const getProjects = asyncHandler(async (req, res) => {
     total,
     pages: Math.ceil(total / limit),
     currentPage: Number(page),
-    data: projects.map((project) => ({
-      ...project.toObject(),
-      totalPaid: project.totalPaid,
-      completionRate: project.completionRate,
-      remainingBalance: project.remainingBalance,
-    })),
+    data: projects, // Simplified: New virtuals are included automatically
   });
 });
 
@@ -78,11 +71,11 @@ const getProjects = asyncHandler(async (req, res) => {
  */
 const getProject = asyncHandler(async (req, res) => {
   const project = await Project.findById(req.params.id)
-    .populate("client", "name email phone companyName")
     .populate("employees.employee", "name email position department")
     .populate("services", "name description price")
     .populate("createdBy", "name email")
-    .populate("installments.addedBy", "name");
+    .populate("client_payments")
+    .populate("employee_payments");
 
   if (!project) {
     return res.status(404).json({
@@ -93,12 +86,7 @@ const getProject = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    data: {
-      ...project.toObject(),
-      totalPaid: project.totalPaid,
-      completionRate: project.completionRate,
-      remainingBalance: project.remainingBalance,
-    },
+    data: project, // Simplified: New virtuals are included automatically
   });
 });
 
@@ -113,25 +101,24 @@ const createProject = asyncHandler(async (req, res) => {
     description,
     client,
     budget,
-    currency,
     startDate,
     endDate,
     employees,
     services,
+    department
   } = req.body;
 
   // Validate required fields
-  if (!name || !client || !budget || !startDate) {
+  if (!name || !client || !budget || !startDate || !department) {
     return res.status(400).json({
       success: false,
-      message: "Name, client, budget and start date are required",
+      message: "Name, client, budget, start date and department are required",
     });
   }
 
   // Validate references exist
   try {
     await Promise.all([
-      validateClient(client),
       validateEmployees(employees?.map((e) => e.employee)),
       validateServices(services),
     ]);
@@ -147,12 +134,12 @@ const createProject = asyncHandler(async (req, res) => {
     description,
     client,
     budget,
-    currency,
     startDate,
     endDate,
     employees: employees || [],
     services: services || [],
     createdBy: req.user.id,
+    department
   });
 
   const populated = await Project.findById(project._id)
@@ -180,15 +167,14 @@ const updateProject = asyncHandler(async (req, res) => {
     });
   }
 
-  // Prevent updating certain fields
-  const { createdBy, installments, ...updateData } = req.body;
+  // Prevent updating payment arrays directly through this endpoint
+  const { createdBy, client_payments, employee_payments, ...updateData } = req.body;
 
   const updatedProject = await Project.findByIdAndUpdate(
     req.params.id,
     updateData,
     { new: true, runValidators: true }
   )
-    .populate("client", "name")
     .populate("employees.employee", "name");
 
   res.json({
@@ -198,17 +184,17 @@ const updateProject = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Add installment to project
- * @route   POST /api/projects/:id/installments
+ * @desc    Add a payment from a client
+ * @route   POST /api/projects/:id/client-payments
  * @access  Private/Manager
  */
-const addInstallment = asyncHandler(async (req, res) => {
-  const { amount, method, receiptNumber, notes } = req.body;
+const addClientPayment = asyncHandler(async (req, res) => {
+  const { amount, notes } = req.body;
 
-  if (!amount || !method) {
+  if (!amount) {
     return res.status(400).json({
       success: false,
-      message: "Amount and payment method are required",
+      message: "Payment amount is required",
     });
   }
 
@@ -221,25 +207,51 @@ const addInstallment = asyncHandler(async (req, res) => {
     });
   }
 
-  project.installments.push({
+  project.client_payments.push({
     amount,
-    method,
-    receiptNumber,
     notes,
     addedBy: req.user.id,
   });
 
   await project.save();
-
-  res.json({
-    success: true,
-    data: {
-      ...project.toObject(),
-      totalPaid: project.totalPaid,
-      completionRate: project.completionRate,
-    },
-  });
+  res.json({ success: true, data: project });
 });
+
+/**
+ * @desc    Add a payment to an employee
+ * @route   POST /api/projects/:id/employee-payments
+ * @access  Private/Manager
+ */
+const addEmployeePayment = asyncHandler(async (req, res) => {
+  const { employee, amount, notes } = req.body;
+
+  if (!employee || !amount) {
+    return res.status(400).json({
+      success: false,
+      message: "Employee and amount are required",
+    });
+  }
+
+  const project = await Project.findById(req.params.id);
+
+  if (!project) {
+    return res.status(404).json({
+      success: false,
+      message: "Project not found",
+    });
+  }
+
+  project.employee_payments.push({
+    employee,
+    amount,
+    notes,
+    addedBy: req.user.id,
+  });
+
+  await project.save();
+  res.json({ success: true, data: project });
+});
+
 
 /**
  * @desc    Get project financial summary
@@ -247,7 +259,10 @@ const addInstallment = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getProjectFinancials = asyncHandler(async (req, res) => {
-  const project = await Project.findById(req.params.id);
+  const project = await Project.findById(req.params.id)
+    .populate("client_payments",)
+    .populate("employee_payments")
+    .populate("employee_payments.employee", "name");
 
   if (!project) {
     return res.status(404).json({
@@ -256,15 +271,20 @@ const getProjectFinancials = asyncHandler(async (req, res) => {
     });
   }
 
+  // Respond with the new, accurate financial data
   res.json({
     success: true,
     data: {
       budget: project.budget,
-      currency: project.currency,
-      totalPaid: project.totalPaid,
-      remainingBalance: project.remainingBalance,
-      completionRate: project.completionRate,
-      installments: project.installments,
+      totalCost: project.totalCost,
+      grossProfit: project.grossProfit,
+      netProfitToDate: project.netProfitToDate,
+      moneyCollected: project.moneyCollected,
+      moneyPaid: project.moneyPaid,
+      clientBalanceDue: project.clientBalanceDue,
+      employeeBalanceDue: project.employeeBalanceDue,
+      client_payments: project.client_payments,
+      employee_payments: project.employee_payments,
     },
   });
 });
@@ -293,13 +313,6 @@ const deleteProject = asyncHandler(async (req, res) => {
   });
 });
 
-// Helper functions
-const validateClient = async (clientId) => {
-  const client = await Client.findById(clientId);
-  if (!client) throw new Error("Client not found");
-  return true;
-};
-
 const validateEmployees = async (employeeIds = []) => {
   if (employeeIds.length > 0) {
     const count = await Employee.countDocuments({
@@ -317,7 +330,6 @@ const validateServices = async (serviceIds = []) => {
   if (serviceIds?.length > 0) {
     const count = await Service.countDocuments({
       _id: { $in: serviceIds },
-      isActive: true,
     });
     if (count !== serviceIds.length) {
       throw new Error("One or more services not found or inactive");
@@ -332,6 +344,7 @@ module.exports = {
   createProject,
   updateProject,
   deleteProject,
-  addInstallment,
+  addClientPayment, // Replaces addInstallment
+  addEmployeePayment, // New function
   getProjectFinancials,
 };

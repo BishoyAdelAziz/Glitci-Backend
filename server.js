@@ -11,7 +11,7 @@ const projectRoutes = require("./src/routes/projects");
 
 const employeeRoutes = require("./src/routes/employees");
 const serviceRoutes = require("./src/routes/services");
-const financeRoutes = require("./src/routes/finance");
+const analyticsRoutes = require("./src/routes/analytics");
 const clientRoutes = require("./src/routes/clientRoutes");
 
 const departments = require("./src/routes/departments");
@@ -49,8 +49,6 @@ app.use(cookieParser());
 // Database connection
 mongoose
   .connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
   })
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
@@ -60,7 +58,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/services", serviceRoutes);
-app.use("/api/finance", financeRoutes);
+app.use("/api/analytics", analyticsRoutes);
 app.use("/api/departments", departments);
 app.use("/api/positions", positionRoutes);
 app.use("/api/skills", skillRoutes);

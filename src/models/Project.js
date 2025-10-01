@@ -1,36 +1,6 @@
 const mongoose = require("mongoose");
 const Counter = require("./counter");
 
-const installmentSchema = new mongoose.Schema(
-  {
-    amount: {
-      type: Number,
-      required: [true, "Installment amount is required"],
-      min: [0, "Amount cannot be negative"],
-    },
-    method: {
-      type: String,
-      required: [true, "Payment method is required"],
-      enum: {
-        values: ["cash", "bank_transfer", "check", "card", "digital_wallet"],
-        message: "Invalid payment method",
-      },
-    },
-    date: {
-      type: Date,
-      default: Date.now,
-    },
-    addedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Added by user is required"],
-    },
-    receiptNumber: String,
-    notes: String,
-  },
-  { _id: true, timestamps: true }
-);
-
 const projectSchema = new mongoose.Schema(
   {
     _id: { type: String }, // Using string ID with counter
@@ -46,20 +16,33 @@ const projectSchema = new mongoose.Schema(
     },
     client: {
       type: String,
-      ref: "Client",
       required: [true, "Client reference is required"],
     },
+
     budget: {
       type: Number,
       required: [true, "Budget is required"],
       min: [0, "Budget cannot be negative"],
     },
-    currency: {
-      type: String,
-      default: "EGP",
-      enum: ["EGP", "USD", "EUR"],
-      uppercase: true,
-    },
+    client_payments: [
+      {
+        _id: false,
+        amount: { type: Number, required: true },
+        date: { type: Date, default: Date.now },
+        notes: String,
+        addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+      },
+    ],
+    employee_payments: [
+      {
+        _id: false,
+        employee: { type: String, ref: "Employee", required: true },
+        amount: { type: Number, required: true },
+        date: { type: Date, default: Date.now },
+        notes: String,
+        addedBy: { type: String, ref: "User", required: true },
+      },
+    ],
     startDate: {
       type: Date,
       required: [true, "Start date is required"],
@@ -72,6 +55,7 @@ const projectSchema = new mongoose.Schema(
     },
     employees: [
       {
+        _id: false,
         employee: {
           type: String,
           ref: "Employee",
@@ -81,26 +65,31 @@ const projectSchema = new mongoose.Schema(
           type: String,
           required: true,
         },
-        hourlyRate: Number,
+        compensation: {
+          type: Number,
+          required: true,
+          default: 0,
+        },
         assignedAt: {
           type: Date,
           default: Date.now,
         },
       },
     ],
-    installments: [installmentSchema],
+    department:{type: String, ref: "Department", required: true },
     services: [
       {
+        _id: false,
         type: String,
         ref: "Service",
-      },
+      }
     ],
     isActive: {
       type: Boolean,
       default: true,
     },
     createdBy: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
@@ -125,22 +114,44 @@ projectSchema.pre("save", async function (next) {
   next();
 });
 
-// Virtual for total paid amount
-projectSchema.virtual("totalPaid").get(function () {
-  const installmentsTotal =
-    this.installments?.reduce((sum, i) => sum + i.amount, 0) || 0;
-  return installmentsTotal;
+// --- FINANCIAL VIRTUALS ---
+
+// Total money RECEIVED from the client so far.
+projectSchema.virtual("moneyCollected").get(function () {
+  return this.client_payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
 });
 
-// Virtual for completion percentage
-projectSchema.virtual("completionRate").get(function () {
-  if (this.budget <= 0) return 0;
-  return parseFloat(((this.totalPaid / this.budget) * 100).toFixed(2));
+// Total money PAID to employees so far.
+projectSchema.virtual("moneyPaid").get(function () {
+  return this.employee_payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
 });
 
-// Virtual for remaining balance
-projectSchema.virtual("remainingBalance").get(function () {
-  return this.budget - this.totalPaid;
+// The project's total EXPECTED profit.
+projectSchema.virtual("grossProfit").get(function () {
+  return this.budget - this.totalCost;
+});
+
+// The project's CURRENT cash-flow profit.
+projectSchema.virtual("netProfitToDate").get(function () {
+  return this.moneyCollected - this.moneyPaid;
+});
+
+// How much the client still owes you.
+projectSchema.virtual("clientBalanceDue").get(function () {
+  return this.budget - this.moneyCollected;
+});
+
+// How much you still owe your employees.
+projectSchema.virtual("employeeBalanceDue").get(function () {
+  return this.totalCost - this.moneyPaid;
+});
+
+// Total cost of the project based on employee compensations.
+projectSchema.virtual("totalCost").get(function () {
+  if (!this.employees || this.employees.length === 0) {
+    return 0;
+  }
+  return this.employees.reduce((sum, emp) => sum + emp.compensation, 0);
 });
 
 // Indexes for better performance
