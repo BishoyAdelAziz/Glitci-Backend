@@ -15,7 +15,7 @@ const serviceSchema = new mongoose.Schema({
     required: [true, "Please add a price"],
   },
   department: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,
     ref: "Department",
     required: [true, "Please add a department"],
   },

@@ -5,7 +5,8 @@ const {
   createProject,
   updateProject,
   deleteProject,
-  addInstallment,
+  addClientPayment, // Replaces addInstallment
+  addEmployeePayment, // New function
   getProjectFinancials,
 } = require("../controllers/projectController");
 const { protect, manager } = require("../middleware/auth");
@@ -22,7 +23,12 @@ router
   .get(protect, getProject)
   .put(protect, manager, updateProject)
   .delete(protect, manager, deleteProject);
-router.post("/:id/installments", protect, manager, addInstallment);
+
+// New routes for adding payments
+router.post("/:id/client-payments", protect, manager, addClientPayment);
+router.post("/:id/employee-payments", protect, manager, addEmployeePayment);
+
+// Route for financial summary
 router.get("/:id/financials", protect, getProjectFinancials);
 
 module.exports = router;

@@ -37,7 +37,8 @@ exports.createService = async (req, res, next) => {
     const service = await Service.create(req.body);
     res.status(201).json({ success: true, data: service });
   } catch (err) {
-    res.status(400).json({ success: false });
+    res.status(400).json({ success: false, error: err.message });
+
   }
 };
 

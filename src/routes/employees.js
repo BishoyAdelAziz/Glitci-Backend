@@ -6,7 +6,6 @@ const {
   createEmployee,
   updateEmployee,
   deleteEmployee,
-  addInstallment,
   getEmployeesByDepartment,
 } = require("../controllers/employeeController");
 
@@ -28,9 +27,6 @@ router.post("/", createEmployee);
 
 // PATCH /api/employees/:id - Update employee
 router.patch("/:id", updateEmployee);
-
-// POST /api/employees/:employeeId/projects/:projectId/installments - Add installment
-router.post("/:employeeId/projects/:projectId/installments", addInstallment);
 
 // ===== ADMIN ONLY ROUTES =====
 
