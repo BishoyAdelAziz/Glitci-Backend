@@ -1,29 +1,51 @@
 const express = require("express");
+const clientController = require("../controllers/clientController");
+const { validateRequest } = require("../middleware/validateRequest");
 const {
-  getClients,
-  getClient,
   createClient,
   updateClient,
-  deleteClient,
-} = require("../controllers/clientController");
+  listQuery,
+} = require("../validators/clientValidator");
 
 const router = express.Router();
 
-// Assuming you have authentication middleware like 'protect' and 'authorize'
-// const { protect, authorize } = require('../middleware/auth');
-// router.use(protect);
+// GET /clients - List active clients (with search: name first, then company name)
+router.get(
+  "/",
+  validateRequest(listQuery, "query"),
+  clientController.getClients
+);
 
-// Routes for /api/clients
-router
-  .route("/")
-  .get(getClients) // Anyone can view clients (adjust as needed)
-  .post(createClient); // Example: .post(authorize('admin', 'manager'), createClient);
+// GET /clients/all - List all clients (including inactive)
+router.get(
+  "/all",
+  validateRequest(listQuery, "query"),
+  clientController.getAllClients
+);
 
-// Routes for /api/clients/:id
-router
-  .route("/:id")
-  .get(getClient) // Anyone can view a single client
-  .patch(updateClient) // Example: .patch(authorize('admin', 'manager'), updateClient)
-  .delete(deleteClient); // Example: .delete(authorize('admin'), deleteClient);
+// POST /clients - Create client
+router.post("/", validateRequest(createClient), clientController.createClient);
+
+// GET /clients/:id - Get client by ID
+router.get("/:id", clientController.getClient);
+
+// PATCH /clients/:id - Update client
+router.patch(
+  "/:id",
+  validateRequest(updateClient),
+  clientController.updateClient
+);
+
+// DELETE /clients/:id - Soft delete client
+router.delete("/:id", clientController.deleteClient);
+
+// POST /clients/:id/restore - Restore client
+router.post("/:id/restore", clientController.restoreClient);
+
+// DELETE /clients/:id/permanent - Permanent delete client
+router.delete("/:id/permanent", clientController.permanentDeleteClient);
+
+// POST /clients/bulk/delete - Bulk delete clients
+router.post("/bulk/delete", clientController.bulkDeleteClients);
 
 module.exports = router;

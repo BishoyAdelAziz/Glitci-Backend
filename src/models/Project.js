@@ -1,97 +1,223 @@
+// models/Project.js
 const mongoose = require("mongoose");
-const Counter = require("./counter");
+
+// models/Project.js - Update the employeeAssignmentSchema
+const employeeAssignmentSchema = new mongoose.Schema({
+  employee: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Employee",
+    required: true,
+  },
+  compensation: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  hoursWorked: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  paymentStatus: {
+    type: String,
+    enum: ["pending", "partial", "paid"],
+    default: "pending",
+  },
+});
+
+const clientPaymentSchema = new mongoose.Schema({
+  amount: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  notes: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+  },
+  date: {
+    type: Date,
+    default: Date.now,
+  },
+  addedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+  paymentMethod: {
+    type: String,
+    enum: ["cash", "bank_transfer", "check", "credit_card", "other"],
+    default: "bank_transfer",
+  },
+  reference: {
+    type: String,
+    trim: true,
+  },
+});
+
+const employeePaymentSchema = new mongoose.Schema({
+  employee: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Employee",
+    required: true,
+  },
+  amount: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  notes: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+  },
+  date: {
+    type: Date,
+    default: Date.now,
+  },
+  addedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+  paymentMethod: {
+    type: String,
+    enum: ["cash", "bank_transfer", "check", "credit_card", "other"],
+    default: "bank_transfer",
+  },
+});
+
+const expenseSchema = new mongoose.Schema({
+  description: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 200,
+  },
+  amount: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  category: {
+    type: String,
+    required: true,
+    enum: ["equipment", "software", "travel", "marketing", "office", "other"],
+  },
+  date: {
+    type: Date,
+    default: Date.now,
+  },
+  addedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+  receipt: {
+    type: String, // URL to receipt file
+    trim: true,
+  },
+});
 
 const projectSchema = new mongoose.Schema(
   {
-    _id: { type: String }, // Using string ID with counter
     name: {
       type: String,
-      required: [true, "Project name is required"],
+      required: true,
       trim: true,
-      maxlength: [100, "Name cannot exceed 100 characters"],
+      minlength: 2,
+      maxlength: 100,
     },
     description: {
       type: String,
       trim: true,
+      maxlength: 1000,
     },
     client: {
-      type: String,
-      required: [true, "Client reference is required"],
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      required: true,
     },
-
+    department: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Department",
+      required: true,
+    },
     budget: {
       type: Number,
-      required: [true, "Budget is required"],
-      min: [0, "Budget cannot be negative"],
+      required: true,
+      min: 0,
     },
-    client_payments: [
-      {
-        _id: false,
-        amount: { type: Number, required: true },
-        date: { type: Date, default: Date.now },
-        notes: String,
-        addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-      },
-    ],
-    employee_payments: [
-      {
-        _id: false,
-        employee: { type: String, ref: "Employee", required: true },
-        amount: { type: Number, required: true },
-        date: { type: Date, default: Date.now },
-        notes: String,
-        addedBy: { type: String, ref: "User", required: true },
-      },
-    ],
     startDate: {
       type: Date,
-      required: [true, "Start date is required"],
+      required: true,
     },
-    endDate: Date,
+    endDate: {
+      type: Date,
+    },
     status: {
       type: String,
       enum: ["planning", "active", "on_hold", "completed", "cancelled"],
       default: "planning",
     },
-    employees: [
-      {
-        _id: false,
-        employee: {
-          type: String,
-          ref: "Employee",
-          required: true,
-        },
-        role: {
-          type: String,
-          required: true,
-        },
-        compensation: {
-          type: Number,
-          required: true,
-          default: 0,
-        },
-        assignedAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
-    department:{type: String, ref: "Department", required: true },
+    employees: [employeeAssignmentSchema],
     services: [
       {
-        _id: false,
-        type: String,
+        type: mongoose.Schema.Types.ObjectId,
         ref: "Service",
-      }
+      },
     ],
-    isActive: {
-      type: Boolean,
-      default: true,
+
+    // Financials
+    clientPayments: [clientPaymentSchema],
+    employeePayments: [employeePaymentSchema],
+    expenses: [expenseSchema],
+
+    // Calculated fields
+    moneyCollected: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
+    moneyPaid: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    totalCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    grossProfit: {
+      type: Number,
+      default: 0,
+    },
+    netProfitToDate: {
+      type: Number,
+      default: 0,
+    },
+    clientBalanceDue: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    employeeBalanceDue: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // Metadata
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
     },
   },
   {
@@ -101,65 +227,69 @@ const projectSchema = new mongoose.Schema(
   }
 );
 
-// Auto-increment string ID
-projectSchema.pre("save", async function (next) {
-  if (this.isNew) {
-    const counter = await Counter.findByIdAndUpdate(
-      "projectId",
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true }
-    );
-    this._id = counter.seq.toString();
-  }
+// Virtual for total employee compensation
+projectSchema.virtual("totalEmployeeCompensation").get(function () {
+  if (!this.employees) return 0;
+  return this.employees.reduce((sum, emp) => sum + (emp.compensation || 0), 0);
+});
+
+// Virtual for total expenses
+projectSchema.virtual("totalExpensesAmount").get(function () {
+  if (!this.expenses) return 0;
+  return this.expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+});
+
+// Pre-save middleware to calculate financials
+projectSchema.pre("save", function (next) {
+  // Calculate total money collected from client
+  this.moneyCollected = this.clientPayments
+    ? this.clientPayments.reduce(
+        (sum, payment) => sum + (payment.amount || 0),
+        0
+      )
+    : 0;
+
+  // Calculate total money paid to employees
+  this.moneyPaid = this.employeePayments
+    ? this.employeePayments.reduce(
+        (sum, payment) => sum + (payment.amount || 0),
+        0
+      )
+    : 0;
+
+  // Calculate total cost (employee compensation + expenses)
+  const totalEmployeeComp = this.employees
+    ? this.employees.reduce((sum, emp) => sum + (emp.compensation || 0), 0)
+    : 0;
+
+  const totalExpenses = this.expenses
+    ? this.expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0)
+    : 0;
+
+  this.totalCost = totalEmployeeComp + totalExpenses;
+
+  // Calculate gross profit (budget - total cost)
+  this.grossProfit = this.budget - this.totalCost;
+
+  // Calculate net profit to date (money collected - money paid - expenses)
+  this.netProfitToDate = this.moneyCollected - this.moneyPaid - totalExpenses;
+
+  // Calculate client balance due (budget - money collected)
+  this.clientBalanceDue = Math.max(0, this.budget - this.moneyCollected);
+
+  // Calculate employee balance due (total employee comp - money paid)
+  this.employeeBalanceDue = Math.max(0, totalEmployeeComp - this.moneyPaid);
+
   next();
 });
 
-// --- FINANCIAL VIRTUALS ---
-
-// Total money RECEIVED from the client so far.
-projectSchema.virtual("moneyCollected").get(function () {
-  return this.client_payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
-});
-
-// Total money PAID to employees so far.
-projectSchema.virtual("moneyPaid").get(function () {
-  return this.employee_payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
-});
-
-// The project's total EXPECTED profit.
-projectSchema.virtual("grossProfit").get(function () {
-  return this.budget - this.totalCost;
-});
-
-// The project's CURRENT cash-flow profit.
-projectSchema.virtual("netProfitToDate").get(function () {
-  return this.moneyCollected - this.moneyPaid;
-});
-
-// How much the client still owes you.
-projectSchema.virtual("clientBalanceDue").get(function () {
-  return this.budget - this.moneyCollected;
-});
-
-// How much you still owe your employees.
-projectSchema.virtual("employeeBalanceDue").get(function () {
-  return this.totalCost - this.moneyPaid;
-});
-
-// Total cost of the project based on employee compensations.
-projectSchema.virtual("totalCost").get(function () {
-  if (!this.employees || this.employees.length === 0) {
-    return 0;
-  }
-  return this.employees.reduce((sum, emp) => sum + emp.compensation, 0);
-});
-
-// Indexes for better performance
-projectSchema.index({ name: "text", description: "text" });
-projectSchema.index({ status: 1 });
+// Indexes
 projectSchema.index({ client: 1 });
-projectSchema.index({ "employees.employee": 1 });
-projectSchema.index({ createdAt: -1 });
+projectSchema.index({ department: 1 });
+projectSchema.index({ status: 1 });
+projectSchema.index({ startDate: 1 });
+projectSchema.index({ isActive: 1 });
+projectSchema.index({ createdBy: 1 });
 
 module.exports =
   mongoose.models.Project || mongoose.model("Project", projectSchema);

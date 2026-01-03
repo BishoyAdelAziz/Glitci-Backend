@@ -1,9 +1,7 @@
 const mongoose = require("mongoose");
-const Counter = require("./counter");
 
-const PositionSchema = new mongoose.Schema(
+const positionSchema = new mongoose.Schema(
   {
-    _id: { type: String },
     name: {
       type: String,
       required: [true, "Position name is required"],
@@ -13,56 +11,22 @@ const PositionSchema = new mongoose.Schema(
       minlength: [2, "Position name must be at least 2 characters"],
       maxlength: [50, "Position name cannot exceed 50 characters"],
     },
-    description: {
-      type: String,
-      trim: true,
-      maxlength: [200, "Description cannot exceed 200 characters"],
-    },
+    description: { type: String, trim: true, maxlength: 200 },
     department: {
-      type: String, // Changed from Number to String
+      type: mongoose.Schema.Types.ObjectId,
       ref: "Department",
-      required: [true, "Department is required"],
+      required: true,
     },
-    skills: [
-      {
-        type: String, // Changed from Number to String
-        ref: "Skill",
-        required: [true, "At least one skill is required"],
-      },
-    ],
-    isActive: {
-      type: Boolean,
-      default: true,
+    skills: {
+      skills: [{ type: mongoose.Schema.Types.ObjectId, ref: "Skill" }],
     },
+    isActive: { type: Boolean, default: true },
   },
-  {
-    timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  }
+  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-PositionSchema.pre("save", async function (next) {
-  if (this.isNew) {
-    const counter = await Counter.findByIdAndUpdate(
-      "PositionId",
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true }
-    );
-    this._id = counter.seq.toString(); // Convert to string
-  }
-  next();
-});
-// Virtual for department details
-PositionSchema.virtual("departmentDetails", {
-  ref: "Department",
-  localField: "department",
-  foreignField: "_id",
-  justOne: true,
-});
-
-// Virtual for skills details
-PositionSchema.virtual("skillDetails", {
+// Virtual for skills in this position
+positionSchema.virtual("skillDetails", {
   ref: "Skill",
   localField: "skills",
   foreignField: "_id",
@@ -70,4 +34,4 @@ PositionSchema.virtual("skillDetails", {
 });
 
 module.exports =
-  mongoose.models.Position || mongoose.model("Position", PositionSchema);
+  mongoose.models.Position || mongoose.model("Position", positionSchema);

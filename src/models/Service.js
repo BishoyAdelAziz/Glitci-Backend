@@ -1,28 +1,36 @@
 const mongoose = require("mongoose");
 
-const serviceSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, "Please add a name"],
-    trim: true,
+const serviceSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 2,
+      maxlength: 50,
+    },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+    },
+    department: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Department",
+      required: true,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
-  description: {
-    type: String,
-    required: [true, "Please add a description"],
-  },
-  price: {
-    type: Number,
-    required: [true, "Please add a price"],
-  },
-  department: {
-    type: String,
-    ref: "Department",
-    required: [true, "Please add a department"],
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+  { timestamps: true }
+);
 
-module.exports = mongoose.model("Service", serviceSchema);
+// Indexes
+serviceSchema.index({ department: 1 });
+serviceSchema.index({ isActive: 1 });
+serviceSchema.index({ name: 1, department: 1 }, { unique: true });
+
+module.exports =
+  mongoose.models.Service || mongoose.model("Service", serviceSchema);

@@ -1,350 +1,156 @@
-const asyncHandler = require("express-async-handler");
-const Project = require("../models/Project");
-const Employee = require("../models/Employee");
-const Service = require("../models/Service");
-const User = require("../models/User");
+const projectService = require("../services/projectService");
+const asyncHandler = require("../middleware/asyncHandler");
+const { getPaginationData, paginate } = require("../utils/pagination");
 
-/**
- * @desc    Get all projects with advanced filtering
- * @route   GET /api/projects
- * @access  Private
- */
-const getProjects = asyncHandler(async (req, res) => {
-  const {
-    page = 1,
-    limit = 10,
-    status,
-    client,
-    search,
-    startDate,
-    endDate,
-    minBudget,
-    maxBudget,
-  } = req.query;
+// Get all active projects
+exports.getProjects = asyncHandler(async (req, res) => {
+  const { skip, limit, page } = getPaginationData(
+    req.query.page,
+    req.query.limit
+  );
 
-  const filter = { isActive: true };
+  const filters = { ...req.query };
+  delete filters.page;
+  delete filters.limit;
+  delete filters.skip;
 
-  // Apply filters
-  if (status) filter.status = status;
-  if (client) filter.client = client;
-  if (startDate || endDate) {
-    filter.startDate = {};
-    if (startDate) filter.startDate.$gte = new Date(startDate);
-    if (endDate) filter.startDate.$lte = new Date(endDate);
-  }
-  if (minBudget || maxBudget) {
-    filter.budget = {};
-    if (minBudget) filter.budget.$gte = Number(minBudget);
-    if (maxBudget) filter.budget.$lte = Number(maxBudget);
-  }
-
-  // Text search
-  if (search) {
-    filter.$text = { $search: search };
-  }
-
-  const [projects, total] = await Promise.all([
-    Project.find(filter)
-      .populate("employees.employee", "name position")
-      .populate("services", "name")
-      .populate("createdBy", "name")
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit)),
-    Project.countDocuments(filter),
-  ]);
+  const { data, count } = await projectService.listProjects(filters, {
+    skip,
+    limit,
+  });
 
   res.json({
     success: true,
-    count: projects.length,
-    total,
-    pages: Math.ceil(total / limit),
-    currentPage: Number(page),
-    data: projects, // Simplified: New virtuals are included automatically
+    count,
+    ...paginate({ count }, page, limit),
+    data,
   });
 });
 
-/**
- * @desc    Get single project with full details
- * @route   GET /api/projects/:id
- * @access  Private
- */
-const getProject = asyncHandler(async (req, res) => {
-  const project = await Project.findById(req.params.id)
-    .populate("employees.employee", "name email position department")
-    .populate("services", "name description price")
-    .populate("createdBy", "name email")
-    .populate("client_payments")
-    .populate("employee_payments");
+// Get all projects (including inactive)
+exports.getAllProjects = asyncHandler(async (req, res) => {
+  const { skip, limit, page } = getPaginationData(
+    req.query.page,
+    req.query.limit
+  );
 
-  if (!project) {
-    return res.status(404).json({
-      success: false,
-      message: "Project not found",
-    });
-  }
+  const filters = { ...req.query };
+  delete filters.page;
+  delete filters.limit;
+  delete filters.skip;
+
+  const { data, count } = await projectService.listAllProjects(filters, {
+    skip,
+    limit,
+  });
 
   res.json({
     success: true,
-    data: project, // Simplified: New virtuals are included automatically
+    count,
+    ...paginate({ count }, page, limit),
+    data,
   });
 });
 
-/**
- * @desc    Create new project
- * @route   POST /api/projects
- * @access  Private/Manager
- */
-const createProject = asyncHandler(async (req, res) => {
-  const {
-    name,
-    description,
-    client,
-    budget,
-    startDate,
-    endDate,
-    employees,
-    services,
-    department
-  } = req.body;
+// Create project - FIXED: Pass userId from req.user
+exports.createProject = asyncHandler(async (req, res) => {
+  // Get userId from authenticated user
+  const userId = req.user ? req.user.id : null;
 
-  // Validate required fields
-  if (!name || !client || !budget || !startDate || !department) {
-    return res.status(400).json({
+  if (!userId) {
+    return res.status(401).json({
       success: false,
-      message: "Name, client, budget, start date and department are required",
+      message: "Authentication required",
     });
   }
 
-  // Validate references exist
-  try {
-    await Promise.all([
-      validateEmployees(employees?.map((e) => e.employee)),
-      validateServices(services),
-    ]);
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-
-  const project = await Project.create({
-    name,
-    description,
-    client,
-    budget,
-    startDate,
-    endDate,
-    employees: employees || [],
-    services: services || [],
-    createdBy: req.user.id,
-    department
-  });
-
-  const populated = await Project.findById(project._id)
-    .populate("client", "name")
-    .populate("employees.employee", "name");
-
-  res.status(201).json({
-    success: true,
-    data: populated,
-  });
+  const project = await projectService.createProject(req.body, userId);
+  res.status(201).json({ success: true, data: project });
 });
 
-/**
- * @desc    Update project details
- * @route   PUT /api/projects/:id
- * @access  Private/Manager
- */
-const updateProject = asyncHandler(async (req, res) => {
-  const project = await Project.findById(req.params.id);
+// Get single project
+exports.getProject = asyncHandler(async (req, res) => {
+  const project = await projectService.getProjectById(req.params.id);
+  res.json({ success: true, data: project });
+});
 
-  if (!project) {
-    return res.status(404).json({
+// Update project
+exports.updateProject = asyncHandler(async (req, res) => {
+  const project = await projectService.updateProject(req.params.id, req.body);
+  res.json({ success: true, data: project });
+});
+
+// Soft delete project
+exports.deleteProject = asyncHandler(async (req, res) => {
+  const result = await projectService.deleteProject(req.params.id);
+  res.json({ success: true, data: result });
+});
+
+// Restore project
+exports.restoreProject = asyncHandler(async (req, res) => {
+  const result = await projectService.restoreProject(req.params.id);
+  res.json({ success: true, data: result });
+});
+
+// Add client payment
+exports.addClientPayment = asyncHandler(async (req, res) => {
+  const userId = req.user ? req.user.id : null;
+
+  if (!userId) {
+    return res.status(401).json({
       success: false,
-      message: "Project not found",
+      message: "Authentication required",
     });
   }
 
-  // Prevent updating payment arrays directly through this endpoint
-  const { createdBy, client_payments, employee_payments, ...updateData } = req.body;
-
-  const updatedProject = await Project.findByIdAndUpdate(
+  const project = await projectService.addClientPayment(
     req.params.id,
-    updateData,
-    { new: true, runValidators: true }
-  )
-    .populate("employees.employee", "name");
-
-  res.json({
-    success: true,
-    data: updatedProject,
-  });
-});
-
-/**
- * @desc    Add a payment from a client
- * @route   POST /api/projects/:id/client-payments
- * @access  Private/Manager
- */
-const addClientPayment = asyncHandler(async (req, res) => {
-  const { amount, notes } = req.body;
-
-  if (!amount) {
-    return res.status(400).json({
-      success: false,
-      message: "Payment amount is required",
-    });
-  }
-
-  const project = await Project.findById(req.params.id);
-
-  if (!project) {
-    return res.status(404).json({
-      success: false,
-      message: "Project not found",
-    });
-  }
-
-  project.client_payments.push({
-    amount,
-    notes,
-    addedBy: req.user.id,
-  });
-
-  await project.save();
+    req.body,
+    userId
+  );
   res.json({ success: true, data: project });
 });
 
-/**
- * @desc    Add a payment to an employee
- * @route   POST /api/projects/:id/employee-payments
- * @access  Private/Manager
- */
-const addEmployeePayment = asyncHandler(async (req, res) => {
-  const { employee, amount, notes } = req.body;
+// Add employee payment
+exports.addEmployeePayment = asyncHandler(async (req, res) => {
+  const userId = req.user ? req.user.id : null;
 
-  if (!employee || !amount) {
-    return res.status(400).json({
+  if (!userId) {
+    return res.status(401).json({
       success: false,
-      message: "Employee and amount are required",
+      message: "Authentication required",
     });
   }
 
-  const project = await Project.findById(req.params.id);
-
-  if (!project) {
-    return res.status(404).json({
-      success: false,
-      message: "Project not found",
-    });
-  }
-
-  project.employee_payments.push({
-    employee,
-    amount,
-    notes,
-    addedBy: req.user.id,
-  });
-
-  await project.save();
+  const project = await projectService.addEmployeePayment(
+    req.params.id,
+    req.body,
+    userId
+  );
   res.json({ success: true, data: project });
 });
 
+// Add expense
+exports.addExpense = asyncHandler(async (req, res) => {
+  const userId = req.user ? req.user.id : null;
 
-/**
- * @desc    Get project financial summary
- * @route   GET /api/projects/:id/financials
- * @access  Private
- */
-const getProjectFinancials = asyncHandler(async (req, res) => {
-  const project = await Project.findById(req.params.id)
-    .populate("client_payments",)
-    .populate("employee_payments")
-    .populate("employee_payments.employee", "name");
-
-  if (!project) {
-    return res.status(404).json({
+  if (!userId) {
+    return res.status(401).json({
       success: false,
-      message: "Project not found",
+      message: "Authentication required",
     });
   }
 
-  // Respond with the new, accurate financial data
-  res.json({
-    success: true,
-    data: {
-      budget: project.budget,
-      totalCost: project.totalCost,
-      grossProfit: project.grossProfit,
-      netProfitToDate: project.netProfitToDate,
-      moneyCollected: project.moneyCollected,
-      moneyPaid: project.moneyPaid,
-      clientBalanceDue: project.clientBalanceDue,
-      employeeBalanceDue: project.employeeBalanceDue,
-      client_payments: project.client_payments,
-      employee_payments: project.employee_payments,
-    },
-  });
+  const project = await projectService.addExpense(
+    req.params.id,
+    req.body,
+    userId
+  );
+  res.json({ success: true, data: project });
 });
 
-/**
- * @desc    Soft delete project
- * @route   DELETE /api/projects/:id
- * @access  Private/Admin
- */
-const deleteProject = asyncHandler(async (req, res) => {
-  const project = await Project.findById(req.params.id);
-
-  if (!project) {
-    return res.status(404).json({
-      success: false,
-      message: "Project not found",
-    });
-  }
-
-  project.isActive = false;
-  await project.save();
-
-  res.json({
-    success: true,
-    message: "Project deactivated successfully",
-  });
+// Get financial summary
+exports.getFinancialSummary = asyncHandler(async (req, res) => {
+  const summary = await projectService.getFinancialSummary(req.params.id);
+  res.json({ success: true, data: summary });
 });
-
-const validateEmployees = async (employeeIds = []) => {
-  if (employeeIds.length > 0) {
-    const count = await Employee.countDocuments({
-      _id: { $in: employeeIds },
-      isActive: true,
-    });
-    if (count !== employeeIds.length) {
-      throw new Error("One or more employees not found or inactive");
-    }
-  }
-  return true;
-};
-
-const validateServices = async (serviceIds = []) => {
-  if (serviceIds?.length > 0) {
-    const count = await Service.countDocuments({
-      _id: { $in: serviceIds },
-    });
-    if (count !== serviceIds.length) {
-      throw new Error("One or more services not found or inactive");
-    }
-  }
-  return true;
-};
-
-module.exports = {
-  getProjects,
-  getProject,
-  createProject,
-  updateProject,
-  deleteProject,
-  addClientPayment, // Replaces addInstallment
-  addEmployeePayment, // New function
-  getProjectFinancials,
-};

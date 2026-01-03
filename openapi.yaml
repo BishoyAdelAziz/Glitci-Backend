@@ -1,23 +1,24 @@
 openapi: 3.0.3
 info:
-  title: Employee Management System API
+  title: Marketing & Software Agency API
   version: 1.0.0
-  description: API documentation for the Employee Management System
-
 servers:
   - url: http://localhost:5000/api
+    description: Local dev
 
 tags:
   - name: Auth
-    description: Authentication endpoints
-  - name: Departments
-    description: Department management
-  - name: positions
-    description: position management
-  - name: Skills
-    description: Skill management
+  - name: Clients
+  - name: Projects
+  - name: Services
+  - name: Analytics
   - name: Employees
-    description: Employee management
+  - name: Departments
+  - name: Positions
+  - name: Skills
+
+security:
+  - bearerAuth: []
 
 components:
   securitySchemes:
@@ -27,97 +28,245 @@ components:
       bearerFormat: JWT
 
   schemas:
-    Department:
-      type: object
-      properties:
-        id:
-          type: integer
-          example: 1
-        name:
-          type: string
-          example: "Engineering"
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+    MongoId:
+      type: string
+      pattern: "^[0-9a-fA-F]{24}$"
+      example: "64f1c2e9a3b5d1a9b9c12345"
 
-    position:
+    Error:
       type: object
       properties:
-        id:
-          type: integer
-          example: 1
-        name:
-          type: string
-          example: "Software Engineer"
-        department:
-          type: integer
-          example: 1
-        skills:
-          type: array
-          items:
-            type: string
-          example: ["60f7e7e7e7e7e7e7e7e7e7e1"]
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+        success: { type: boolean, example: false }
+        message: { type: string }
 
-    Skill:
+    # ---------- AUTH ----------
+    AuthLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 6 }
+    AuthRegister:
+      allOf: [$ref: "#/components/schemas/AuthLogin"]
+      required: [name, email, password]
+      properties:
+        name: { type: string, minLength: 2 }
+    TokenResponse:
       type: object
       properties:
-        id:
-          type: integer
-          example: 1
-        name:
-          type: string
-          example: "JavaScript"
-        category:
-          type: string
-          example: "technical"
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+        accessToken: { type: string }
+        refreshToken: { type: string }
 
-    Employee:
+    # ---------- CLIENT ----------
+    Client:
       type: object
       properties:
-        serialId:
-          type: integer
-          example: 1001
+        _id:
+          $ref: "#/components/schemas/MongoId"
         name:
           type: string
           example: "John Doe"
+          minLength: 2
+          maxLength: 50
+        companyName:
+          type: string
+          example: "Acme Corp"
+          minLength: 2
+          maxLength: 50
         email:
           type: string
-          example: "john@example.com"
+          format: email
+          example: "john@acme.com"
         phones:
           type: array
           items:
             type: string
+            pattern: '^\+?\d{10,15}$'
           example: ["+1234567890"]
-        department:
+          minItems: 1
+        industry:
           type: string
-          example: "60f7e7e7e7e7e7e7e7e7e7e1"
-        position:
+          example: "Technology"
+          maxLength: 50
+          nullable: true
+        notes:
           type: string
-          example: "60f7e7e7e7e7e7e7e7e7e7e2"
-        skills:
+          example: "Regular customer"
+          maxLength: 1000
+          nullable: true
+        isActive:
+          type: boolean
+          example: true
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ClientCreate:
+      type: object
+      required:
+        - name
+        - companyName
+        - email
+        - phones
+      properties:
+        name:
+          type: string
+          example: "John Doe"
+          minLength: 2
+          maxLength: 50
+        companyName:
+          type: string
+          example: "Acme Corp"
+          minLength: 2
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          example: "john@acme.com"
+        phones:
           type: array
           items:
             type: string
-          example: ["60f7e7e7e7e7e7e7e7e7e7e3"]
-        availability:
+            pattern: '^\+?\d{10,15}$'
+          example: ["+1234567890"]
+          minItems: 1
+        industry:
           type: string
-          enum: ["available", "busy", "on_leave"]
-          example: "available"
+          example: "Technology"
+          maxLength: 50
+        notes:
+          type: string
+          example: "Regular customer"
+          maxLength: 1000
+        isActive:
+          type: boolean
+          default: true
+
+    ClientUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        companyName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        phones:
+          type: array
+          items:
+            type: string
+            pattern: '^\+?\d{10,15}$'
+          minItems: 1
+        industry:
+          type: string
+          maxLength: 50
+        notes:
+          type: string
+          maxLength: 1000
+        isActive:
+          type: boolean
+
+    # ---------- BULK DELETE ----------
+    BulkDelete:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/MongoId"
+    # ---------- SERVICE ----------
+    Service:
+      type: object
+      properties:
+        _id:
+          $ref: "#/components/schemas/MongoId"
+        name:
+          type: string
+          example: "Web Development"
+          minLength: 2
+          maxLength: 50
+        description:
+          type: string
+          example: "Custom web application development"
+          maxLength: 500
+          nullable: true
+        department:
+          type: object
+          properties:
+            _id:
+              $ref: "#/components/schemas/MongoId"
+            name:
+              type: string
+              example: "Software"
+        isActive:
+          type: boolean
+          example: true
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ServiceCreate:
+      type: object
+      required:
+        - name
+        - department
+      properties:
+        name:
+          type: string
+          example: "Web Development"
+          minLength: 2
+          maxLength: 50
+        description:
+          type: string
+          example: "Custom web application development"
+          maxLength: 500
+        department:
+          $ref: "#/components/schemas/MongoId"
+          description: "Department ID (required)"
+        isActive:
+          type: boolean
+          default: true
+
+    ServiceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 500
+        department:
+          $ref: "#/components/schemas/MongoId"
+        isActive:
+          type: boolean
+    # ---------- DEPARTMENTS ----------
+    Department:
+      type: object
+      properties:
+        _id:
+          $ref: "#/components/schemas/MongoId"
+        name:
+          type: string
+          example: Software
+          minLength: 2
+          maxLength: 50
         isActive:
           type: boolean
           example: true
@@ -128,201 +277,1425 @@ components:
           type: string
           format: date-time
 
-    ErrorResponse:
+    DepartmentCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Marketing
+          minLength: 2
+          maxLength: 50
+        isActive:
+          type: boolean
+          example: true
+          default: true
+
+    DepartmentUpdate:
       type: object
       properties:
-        success:
-          type: boolean
-          example: false
-        message:
+        name:
           type: string
-          example: "Department not found"
+          minLength: 2
+          maxLength: 50
+        isActive:
+          type: boolean
+
+    # ---------- POSITIONS ----------
+    Position:
+      type: object
+      properties:
+        _id:
+          $ref: "#/components/schemas/MongoId"
+        name:
+          type: string
+          example: "Frontend Developer"
+          minLength: 2
+          maxLength: 50
+        description:
+          type: string
+          example: "Handles React and UI tasks"
+          maxLength: 200
+        department:
+          type: object
+          properties:
+            _id:
+              $ref: "#/components/schemas/MongoId"
+            name:
+              type: string
+              example: "Software"
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PositionCreate:
+      type: object
+      required:
+        - name
+        - department
+      properties:
+        name:
+          type: string
+          example: "Frontend Developer"
+          minLength: 2
+          maxLength: 50
+        description:
+          type: string
+          example: "Handles React and UI tasks"
+          maxLength: 200
+        department:
+          $ref: "#/components/schemas/MongoId"
+          description: "Department ID (required)"
+        isActive:
+          type: boolean
+          default: true
+
+    PositionUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 200
+        department:
+          $ref: "#/components/schemas/MongoId"
+        isActive:
+          type: boolean
+
+    # ---------- SKILLS ----------
+    Skill:
+      type: object
+      properties:
+        _id:
+          $ref: "#/components/schemas/MongoId"
+        name:
+          type: string
+          example: "React"
+          minLength: 2
+          maxLength: 50
+        position:
+          type: object
+          properties:
+            _id:
+              $ref: "#/components/schemas/MongoId"
+            name:
+              type: string
+              example: "Frontend Developer"
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SkillCreate:
+      type: object
+      required:
+        - name
+        - position
+      properties:
+        name:
+          type: string
+          example: "React"
+          minLength: 2
+          maxLength: 50
+        position:
+          $ref: "#/components/schemas/MongoId"
+          description: "Position ID (required)"
+        isActive:
+          type: boolean
+          default: true
+
+    SkillUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+        position:
+          $ref: "#/components/schemas/MongoId"
+        isActive:
+          type: boolean
+
+    # ---------- EMPLOYEES ----------
+    Employee:
+      type: object
+      properties:
+        _id:
+          $ref: "#/components/schemas/MongoId"
+        name:
+          type: string
+          example: "Ahmed Hassan"
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          example: "ahmed@company.com"
+        department:
+          type: object
+          properties:
+            _id:
+              $ref: "#/components/schemas/MongoId"
+            name:
+              type: string
+              example: "Software"
+        position:
+          type: object
+          properties:
+            _id:
+              $ref: "#/components/schemas/MongoId"
+            name:
+              type: string
+              example: "Frontend Developer"
+        skills:
+          type: array
+          items:
+            type: object
+            properties:
+              _id:
+                $ref: "#/components/schemas/MongoId"
+              name:
+                type: string
+                example: "React"
+        isActive:
+          type: boolean
+          example: true
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EmployeeCreate:
+      type: object
+      required:
+        - name
+        - email
+        - department
+        - position
+        - skills
+      properties:
+        name:
+          type: string
+          example: "Ahmed Hassan"
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          example: "ahmed@company.com"
+        department:
+          $ref: "#/components/schemas/MongoId"
+          description: "Department ID (required)"
+        position:
+          $ref: "#/components/schemas/MongoId"
+          description: "Position ID (required, must belong to specified department)"
+        skills:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/MongoId"
+          description: "Array of Skill IDs (required, skills must belong to specified position)"
+        isActive:
+          type: boolean
+          default: true
+
+    EmployeeUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        department:
+          $ref: "#/components/schemas/MongoId"
+        position:
+          $ref: "#/components/schemas/MongoId"
+        skills:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/MongoId"
+        isActive:
+          type: boolean
+
+    BulkDelete:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/MongoId"
+
+    # ---------- PROJECT RELATED SCHEMAS ----------
+    EmployeeAssignment:
+      type: object
+      properties:
+        employee:
+          $ref: "#/components/schemas/MongoId"
+        compensation:
+          type: number
+          example: 5000
+          minimum: 0
+        hoursWorked:
+          type: number
+          example: 160
+          minimum: 0
+        paymentStatus:
+          type: string
+          enum: [pending, partial, paid]
+          example: pending
+
+    ClientPayment:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          example: 5000
+          minimum: 0
+        notes:
+          type: string
+          example: "First installment"
+          maxLength: 500
+        date:
+          type: string
+          format: date-time
+        paymentMethod:
+          type: string
+          enum: [cash, bank_transfer, check, credit_card, other]
+          example: bank_transfer
+        reference:
+          type: string
+          example: "INV-2024-001"
+
+    EmployeePayment:
+      type: object
+      required: [employee, amount]
+      properties:
+        employee:
+          $ref: "#/components/schemas/MongoId"
+        amount:
+          type: number
+          example: 2000
+          minimum: 0
+        notes:
+          type: string
+          example: "Salary for March"
+          maxLength: 500
+        date:
+          type: string
+          format: date-time
+        paymentMethod:
+          type: string
+          enum: [cash, bank_transfer, check, credit_card, other]
+          example: bank_transfer
+
+    Expense:
+      type: object
+      required: [description, amount, category]
+      properties:
+        description:
+          type: string
+          example: "Purchase of design software"
+          maxLength: 200
+        amount:
+          type: number
+          example: 300
+          minimum: 0
+        category:
+          type: string
+          enum: [equipment, software, travel, marketing, office, other]
+          example: software
+        date:
+          type: string
+          format: date-time
+        receipt:
+          type: string
+          example: "https://example.com/receipt.jpg"
+
+    Project:
+      type: object
+      properties:
+        _id:
+          $ref: "#/components/schemas/MongoId"
+        name:
+          type: string
+          example: "Website Redesign"
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          example: "Complete redesign of company website"
+          maxLength: 1000
+        client:
+          type: object
+          properties:
+            _id:
+              $ref: "#/components/schemas/MongoId"
+            name:
+              type: string
+              example: "John Doe"
+            companyName:
+              type: string
+              example: "Acme Corp"
+            email:
+              type: string
+              format: email
+        department:
+          type: object
+          properties:
+            _id:
+              $ref: "#/components/schemas/MongoId"
+            name:
+              type: string
+              example: "Software"
+        budget:
+          type: number
+          example: 15000
+          minimum: 0
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [planning, active, on_hold, completed, cancelled]
+          example: active
+        employees:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeAssignment"
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/Service"
+        clientPayments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientPayment"
+        employeePayments:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeePayment"
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Expense"
+        moneyCollected:
+          type: number
+          example: 7500
+        moneyPaid:
+          type: number
+          example: 4000
+        totalCost:
+          type: number
+          example: 8000
+        grossProfit:
+          type: number
+          example: 7000
+        netProfitToDate:
+          type: number
+          example: 3500
+        clientBalanceDue:
+          type: number
+          example: 7500
+        employeeBalanceDue:
+          type: number
+          example: 4000
+        createdBy:
+          type: object
+          properties:
+            _id:
+              $ref: "#/components/schemas/MongoId"
+            name:
+              type: string
+              example: "Admin User"
+            email:
+              type: string
+              format: email
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProjectCreate:
+      type: object
+      required: [name, client, department, budget, startDate]
+      properties:
+        name:
+          type: string
+          example: "Website Redesign"
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          example: "Complete redesign of company website"
+          maxLength: 1000
+        client:
+          $ref: "#/components/schemas/MongoId"
+          description: "Client ID"
+        department:
+          $ref: "#/components/schemas/MongoId"
+          description: "Department ID"
+        budget:
+          type: number
+          example: 15000
+          minimum: 0
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [planning, active, on_hold, completed, cancelled]
+          example: planning
+        employees:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeAssignment"
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/MongoId"
+          description: "Array of Service IDs"
+        isActive:
+          type: boolean
+          default: true
+
+    ProjectUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 1000
+        client:
+          $ref: "#/components/schemas/MongoId"
+        department:
+          $ref: "#/components/schemas/MongoId"
+        budget:
+          type: number
+          minimum: 0
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [planning, active, on_hold, completed, cancelled]
+        employees:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeAssignment"
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/MongoId"
+        isActive:
+          type: boolean
+
+    FinanceSummary:
+      type: object
+      properties:
+        budget:
+          type: number
+        moneyCollected:
+          type: number
+        moneyPaid:
+          type: number
+        totalCost:
+          type: number
+        grossProfit:
+          type: number
+        netProfitToDate:
+          type: number
+        clientBalanceDue:
+          type: number
+        employeeBalanceDue:
+          type: number
+        totalEmployeeCompensation:
+          type: number
+        totalExpenses:
+          type: number
+
+  parameters:
+    skip:
+      name: skip
+      in: query
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 10
+        minimum: 1
+        maximum: 100
+    page:
+      name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    search:
+      name: search
+      in: query
+      schema: { type: string }
+    department:
+      name: department
+      in: query
+      schema: { $ref: "#/components/schemas/MongoId" }
+    position:
+      name: position
+      in: query
+      schema: { $ref: "#/components/schemas/MongoId" }
+    skill:
+      name: skill
+      in: query
+      schema: { $ref: "#/components/schemas/MongoId" }
+    isActive:
+      name: isActive
+      in: query
+      schema: { type: boolean }
 
 paths:
-  # ===== Departments =====
+  # ===================================================================
+  #  AUTH
+  # ===================================================================
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuthLogin" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { $ref: "#/components/schemas/TokenResponse" }
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuthRegister" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: object }
+
+  /auth/change-password:
+    patch:
+      tags: [Auth]
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 6 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request reset link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Reset email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  /auth/reset-password/{token}:
+    put:
+      tags: [Auth]
+      summary: Reset password with token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, minLength: 6 }
+      responses:
+        "200":
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: New tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/TokenResponse" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (revoke refresh)
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  # ===================================================================
+  #  CLIENTS
+  # ===================================================================
+    # ===================================================================
+  #  CLIENTS
+  # ===================================================================
+  /clients:
+    get:
+      tags: [Clients]
+      summary: List active clients (paginated & filtered)
+      description: |
+        **Search Behavior:** 
+        - First searches by client name
+        - If no name matches, searches by company name
+        
+        Default sorting is by client name ascending.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/search"
+        - name: industry
+          in: query
+          schema:
+            type: string
+            maxLength: 50
+          description: Filter by industry (case-insensitive partial match)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Client"
+                  count:
+                    type: integer
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  hasNextPage:
+                    type: boolean
+                  hasPreviousPage:
+                    type: boolean
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      tags: [Clients]
+      summary: Create a new client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientCreate"
+      responses:
+        "201":
+          description: Client created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Client"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /clients/all:
+    get:
+      tags: [Clients]
+      summary: List all clients (including inactive)
+      description: Retrieve all clients regardless of active status
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/search"
+        - name: industry
+          in: query
+          schema:
+            type: string
+            maxLength: 50
+          description: Filter by industry
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+          description: Filter by active status
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Client"
+                  count:
+                    type: integer
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  hasNextPage:
+                    type: boolean
+                  hasPreviousPage:
+                    type: boolean
+        "400":
+          description: Invalid query parameters
+
+  /clients/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/MongoId"
+    get:
+      tags: [Clients]
+      summary: Get client by ID
+      description: Retrieve a single client by their ID
+      responses:
+        "200":
+          description: Client details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Client"
+        "404":
+          description: Client not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    patch:
+      tags: [Clients]
+      summary: Update client information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdate"
+      responses:
+        "200":
+          description: Client updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Client"
+        "400":
+          description: Validation error
+        "404":
+          description: Client not found
+
+    delete:
+      tags: [Clients]
+      summary: Soft delete client (deactivate)
+      description: Sets isActive to false (soft delete)
+      responses:
+        "200":
+          description: Client deactivated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Client deactivated successfully"
+        "404":
+          description: Client not found or already inactive
+
+  /clients/{id}/restore:
+    post:
+      tags: [Clients]
+      summary: Restore a deactivated client
+      description: Sets isActive to true
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: Client restored successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Client restored successfully"
+        "400":
+          description: Client is already active
+        "404":
+          description: Client not found
+
+  /clients/{id}/permanent:
+    delete:
+      tags: [Clients]
+      summary: Permanently delete client
+      description: Hard delete from database (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: Client permanently deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Client permanently deleted"
+        "404":
+          description: Client not found
+
+  /clients/bulk/delete:
+    post:
+      tags: [Clients]
+      summary: Bulk delete clients
+      description: Deactivate multiple clients at once (soft delete)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDelete"
+            example:
+              ids: ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"]
+      responses:
+        "200":
+          description: Clients deactivated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      acknowledged:
+                        type: boolean
+                        example: true
+                      matchedCount:
+                        type: integer
+                        example: 2
+                      modifiedCount:
+                        type: integer
+                        example: 2
+        "400":
+          description: Invalid IDs provided
+        "404":
+          description: No clients found with provided IDs
+    tags: [Clients]
+    summary: Restore a soft-deleted client
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/MongoId"
+    responses:
+      "200":
+        description: Client restored
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: true
+                data:
+                  type: object
+                  properties:
+                    id:
+                      $ref: "#/components/schemas/MongoId"
+                    message:
+                      type: string
+                      example: "Client restored successfully"
+      "404":
+        description: Client not found
+  # ===================================================================
+  #  DEPARTMENTS
+  # ===================================================================
   /departments:
     get:
       tags: [Departments]
-      summary: Get all departments
-      security:
-        - bearerAuth: []
+      summary: List departments
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/isActive"
       responses:
-        "200":
+        200:
           description: List of departments
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
                   data:
                     type: array
                     items:
                       $ref: "#/components/schemas/Department"
+                  count:
+                    type: integer
+
     post:
       tags: [Departments]
-      summary: Create a new department
-      security:
-        - bearerAuth: []
+      summary: Create department
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-              properties:
-                name:
-                  type: string
-                  example: "Engineering"
+              $ref: "#/components/schemas/DepartmentCreate"
       responses:
-        "201":
+        201:
           description: Department created
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: "#/components/schemas/Department"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/Department"
 
   /departments/{id}:
     get:
       tags: [Departments]
-      summary: Get a department by ID
-      security:
-        - bearerAuth: []
+      summary: Get department by ID
       parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
           schema:
-            type: integer
+            $ref: "#/components/schemas/MongoId"
       responses:
-        "200":
-          description: Department details
+        200:
+          description: Department
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: "#/components/schemas/Department"
-        "404":
+                $ref: "#/components/schemas/Department"
+        404:
           description: Department not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+
     patch:
       tags: [Departments]
-      summary: Update a department
-      security:
-        - bearerAuth: []
+      summary: Update department
       parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
           schema:
-            type: integer
+            $ref: "#/components/schemas/MongoId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  example: "Engineering Department"
+              $ref: "#/components/schemas/DepartmentUpdate"
       responses:
-        "200":
-          description: Department updated
+        200:
+          description: Updated department
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: "#/components/schemas/Department"
-        "404":
-          description: Department not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/Department"
+
     delete:
       tags: [Departments]
-      summary: Delete a department
-      security:
-        - bearerAuth: []
+      summary: Delete department
       parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
           schema:
-            type: integer
+            $ref: "#/components/schemas/MongoId"
       responses:
-        "200":
+        200:
           description: Department deleted
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  id:
+                    $ref: "#/components/schemas/MongoId"
+
+  # ===================================================================
+  #  SERVICES
+  # ===================================================================
+  # ===================================================================
+  #  SERVICES
+  # ===================================================================
+  /services:
+    get:
+      tags: [Services]
+      summary: List active services (paginated & filtered)
+      description: Retrieve a paginated list of active services
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/search"
+        - name: department
+          in: query
+          schema:
+            $ref: "#/components/schemas/MongoId"
+          description: Filter by department ID
+      responses:
+        "200":
+          description: List of services
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
                   success:
                     type: boolean
                     example: true
-                  message:
-                    type: string
-                    example: "Department deleted"
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Service"
+                  count:
+                    type: integer
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  hasNextPage:
+                    type: boolean
+                  hasPreviousPage:
+                    type: boolean
+              example:
+                success: true
+                data:
+                  - _id: "68d9ffa0a66bf4e7c5e2ef8b"
+                    name: "Web Development"
+                    description: "Custom web application development"
+                    department:
+                      _id: "6955570b8baac1cf16dbbe04"
+                      name: "Software"
+                    isActive: true
+                    createdAt: "2024-01-15T10:30:00Z"
+                    updatedAt: "2024-01-20T14:25:00Z"
+                count: 1
+                totalPages: 1
+                currentPage: 1
+                hasNextPage: false
+                hasPreviousPage: false
         "400":
-          description: Bad request (department has positions)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Department not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid query parameters
 
-  # ===== positions =====
-  /positions/department/{departmentId}:
+    post:
+      tags: [Services]
+      summary: Create a new service
+      description: Create a new service type/offering
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceCreate"
+            example:
+              name: "Mobile App Development"
+              description: "iOS and Android mobile applications"
+              department: "6955570b8baac1cf16dbbe04"
+      responses:
+        "201":
+          description: Service created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Service"
+        "400":
+          description: |
+            Validation errors:
+            1. Service name already exists for this department
+            2. Department not found
+        "409":
+          description: Service with this name already exists for the department
+
+  /services/all:
     get:
-      tags: [positions]
-      summary: Get positions by department
-      security:
-        - bearerAuth: []
+      tags: [Services]
+      summary: List all services (including inactive)
+      description: Retrieve all services regardless of active status
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/search"
+        - name: department
+          in: query
+          schema:
+            $ref: "#/components/schemas/MongoId"
+          description: Filter by department ID
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+          description: Filter by active status
+      responses:
+        "200":
+          description: List of all services
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Service"
+                  count:
+                    type: integer
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  hasNextPage:
+                    type: boolean
+                  hasPreviousPage:
+                    type: boolean
+        "400":
+          description: Invalid query parameters
+
+  /services/department/{departmentId}:
+    get:
+      tags: [Services]
+      summary: Get services by department
+      description: Retrieve all active services for a specific department
       parameters:
         - name: departmentId
           in: path
           required: true
           schema:
-            type: integer
+            $ref: "#/components/schemas/MongoId"
       responses:
         "200":
-          description: List of positions
+          description: Services for the department
           content:
             application/json:
               schema:
@@ -334,93 +1707,45 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        id:
-                          type: integer
-                          example: 1
-                        name:
-                          type: string
-                          example: "Software Engineer"
-                        skills:
-                          type: array
-                          items:
-                            type: object
-                            properties:
-                              id:
-                                type: string
-                              name:
-                                type: string
-
-  /positions:
-    post:
-      tags: [positions]
-      summary: Create a new position
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - name
-                - departmentId
-                - skillIds
-              properties:
-                name:
-                  type: string
-                  example: "Software Engineer"
-                departmentId:
-                  type: integer
-                  example: 1
-                skillIds:
-                  type: array
-                  items:
-                    type: string
-                  example: ["60f7e7e7e7e7e7e7e7e7e7e1"]
-      responses:
-        "201":
-          description: position created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: "#/components/schemas/position"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                      $ref: "#/components/schemas/Service"
+              example:
+                success: true
+                data:
+                  - _id: "68d9ffa0a66bf4e7c5e2ef8b"
+                    name: "Web Development"
+                    description: "Custom web application development"
+                    department:
+                      _id: "6955570b8baac1cf16dbbe04"
+                      name: "Software"
+                    isActive: true
+                    createdAt: "2024-01-15T10:30:00Z"
+                    updatedAt: "2024-01-20T14:25:00Z"
+                  - _id: "68d9ffa0a66bf4e7c5e2ef8c"
+                    name: "API Development"
+                    description: "REST and GraphQL APIs"
+                    department:
+                      _id: "6955570b8baac1cf16dbbe04"
+                      name: "Software"
+                    isActive: true
+                    createdAt: "2024-01-16T11:30:00Z"
+                    updatedAt: "2024-01-21T15:25:00Z"
         "404":
           description: Department not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
-  /positions/{id}:
+  /services/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/MongoId"
     get:
-      tags: [positions]
-      summary: Get a position by ID
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      tags: [Services]
+      summary: Get service by ID
+      description: Retrieve a single service by its ID
       responses:
         "200":
-          description: position details
+          description: Service details
           content:
             application/json:
               schema:
@@ -430,45 +1755,26 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: "#/components/schemas/position"
+                    $ref: "#/components/schemas/Service"
         "404":
-          description: position not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Service not found or inactive
+
     patch:
-      tags: [positions]
-      summary: Update a position
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      tags: [Services]
+      summary: Update service
+      description: Update an existing service's information
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  example: "Senior Software Engineer"
-                departmentId:
-                  type: integer
-                  example: 1
-                skillIds:
-                  type: array
-                  items:
-                    type: string
-                  example: ["60f7e7e7e7e7e7e7e7e7e7e1"]
+              $ref: "#/components/schemas/ServiceUpdate"
+            example:
+              name: "Mobile App Development Updated"
+              description: "iOS, Android, and React Native applications"
       responses:
         "200":
-          description: position updated
+          description: Service updated successfully
           content:
             application/json:
               schema:
@@ -478,33 +1784,22 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: "#/components/schemas/position"
+                    $ref: "#/components/schemas/Service"
         "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: |
+            Validation errors:
+            1. Service name already exists for this department
+            2. Department not found
         "404":
-          description: position not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Service not found
+
     delete:
-      tags: [positions]
-      summary: Delete a position
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      tags: [Services]
+      summary: Soft delete service (deactivate)
+      description: Sets isActive to false (soft delete)
       responses:
         "200":
-          description: position deleted
+          description: Service deactivated successfully
           content:
             application/json:
               schema:
@@ -513,234 +1808,488 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  message:
-                    type: string
-                    example: "position deleted"
-        "400":
-          description: Bad request (position has employees)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Service deactivated successfully"
         "404":
-          description: position not found
+          description: Service not found or already inactive
+
+  /services/{id}/restore:
+    post:
+      tags: [Services]
+      summary: Restore a deactivated service
+      description: Sets isActive to true
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: Service restored successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Service restored successfully"
+        "400":
+          description: Service is already active
+        "404":
+          description: Service not found
 
-  # ===== Skills =====
+  /services/{id}/permanent:
+    delete:
+      tags: [Services]
+      summary: Permanently delete service
+      description: Hard delete from database (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: Service permanently deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Service permanently deleted"
+        "404":
+          description: Service not found
+
+  /services/bulk/delete:
+    post:
+      tags: [Services]
+      summary: Bulk delete services
+      description: Deactivate multiple services at once (soft delete)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDelete"
+            example:
+              ids: ["68d9ffa0a66bf4e7c5e2ef8b", "68d9ffa0a66bf4e7c5e2ef8c"]
+      responses:
+        "200":
+          description: Services deactivated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      acknowledged:
+                        type: boolean
+                        example: true
+                      matchedCount:
+                        type: integer
+                        example: 2
+                      modifiedCount:
+                        type: integer
+                        example: 2
+        "400":
+          description: Invalid IDs provided
+        "404":
+          description: No services found with provided IDs
+  # ===================================================================
+  #  POSITIONS
+  # ===================================================================
+  /positions:
+    get:
+      tags: [Positions]
+      summary: List positions (paginated & filtered)
+      parameters:
+        - $ref: "#/components/parameters/skip"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/department"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/isActive"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    {
+                      type: array,
+                      items: { $ref: "#/components/schemas/Position" },
+                    }
+                  count:
+                    type: integer
+
+    post:
+      tags: [Positions]
+      summary: Create position
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PositionCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Position" }
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /positions/department/{departmentId}:
+    get:
+      tags: [Positions]
+      summary: Get all positions for a department (dropdown helper)
+      parameters:
+        - name: departmentId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    {
+                      type: array,
+                      items: { $ref: "#/components/schemas/Position" },
+                    }
+
+  /positions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/MongoId" }
+    get:
+      tags: [Positions]
+      summary: Get single position
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Position" }
+        404:
+          description: Position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    patch:
+      tags: [Positions]
+      summary: Update position
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PositionUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Position" }
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Positions]
+      summary: Delete position
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    $ref: "#/components/schemas/MongoId"
+        404:
+          description: Position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ===================================================================
+  #  SKILLS
+  # ===================================================================
   /skills:
     get:
       tags: [Skills]
-      summary: Get all skills
-      security:
-        - bearerAuth: []
+      summary: List skills
+      parameters:
+        - $ref: "#/components/parameters/skip"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/position"
+        - $ref: "#/components/parameters/search"
+        - $ref: "#/components/parameters/isActive"
       responses:
         "200":
-          description: List of skills
+          description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
                   data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Skill"
+                    {
+                      type: array,
+                      items: { $ref: "#/components/schemas/Skill" },
+                    }
+                  count:
+                    type: integer
+
     post:
       tags: [Skills]
-      summary: Create a new skill
-      security:
-        - bearerAuth: []
+      summary: Create skill
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-              properties:
-                name:
-                  type: string
-                  example: "JavaScript"
-                category:
-                  type: string
-                  example: "technical"
+              $ref: "#/components/schemas/SkillCreate"
       responses:
         "201":
-          description: Skill created
+          description: Created
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: "#/components/schemas/Skill"
-        "400":
-          description: Bad request
+                  data: { $ref: "#/components/schemas/Skill" }
+        400:
+          description: Validation error
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/Error"
 
-  /skills/{id}:
+  /skills/position/{positionId}:
     get:
       tags: [Skills]
-      summary: Get a skill by ID
-      security:
-        - bearerAuth: []
+      summary: Get all skills for a position (dropdown helper)
       parameters:
-        - name: id
+        - name: positionId
           in: path
           required: true
           schema:
-            type: integer
+            $ref: "#/components/schemas/MongoId"
       responses:
         "200":
-          description: Skill details
+          description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
                   data:
-                    $ref: "#/components/schemas/Skill"
-        "404":
+                    {
+                      type: array,
+                      items: { $ref: "#/components/schemas/Skill" },
+                    }
+
+  /skills/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/MongoId" }
+    get:
+      tags: [Skills]
+      summary: Get single skill
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Skill" }
+        404:
           description: Skill not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/Error"
+
     patch:
       tags: [Skills]
-      summary: Update a skill
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      summary: Update skill
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  example: "JavaScript ES6+"
-                category:
-                  type: string
-                  example: "technical"
+              $ref: "#/components/schemas/SkillUpdate"
       responses:
         "200":
-          description: Skill updated
+          description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    $ref: "#/components/schemas/Skill"
-        "404":
+                  data: { $ref: "#/components/schemas/Skill" }
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
           description: Skill not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/Error"
+
     delete:
       tags: [Skills]
-      summary: Delete a skill
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+      summary: Delete skill
       responses:
         "200":
-          description: Skill deleted
+          description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: "Skill deleted"
-        "400":
-          description: Bad request (skill assigned to positions)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
+                  id:
+                    $ref: "#/components/schemas/MongoId"
+        404:
           description: Skill not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/Error"
 
-  # ===== Employees =====
+  # ===================================================================
+  #  EMPLOYEES
+  # ===================================================================
   /employees:
     get:
       tags: [Employees]
-      summary: Get all employees (paginated)
-      security:
-        - bearerAuth: []
+      summary: List employees (paginated & filtered) - Default shows only active employees
+      description: |
+        - By default, only returns active employees (isActive: true)
+        - Set isActive=false to see inactive employees
       parameters:
         - name: page
           in: query
           schema:
             type: integer
             default: 1
+            minimum: 1
         - name: limit
           in: query
           schema:
             type: integer
             default: 10
+            minimum: 1
+            maximum: 200
         - name: department
           in: query
           schema:
-            type: string
+            $ref: "#/components/schemas/MongoId"
+          description: Filter by department ID
         - name: position
           in: query
           schema:
-            type: string
+            $ref: "#/components/schemas/MongoId"
+          description: Filter by position ID
+        - name: skill
+          in: query
+          schema:
+            $ref: "#/components/schemas/MongoId"
+          description: Filter by skill ID
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+          description: |
+            - true: only active employees (default)
+            - false: only inactive employees
+            - undefined: all employees (only through /employees/all endpoint)
         - name: search
           in: query
           schema:
             type: string
-        - name: availability
-          in: query
-          schema:
-            type: string
-            enum: [available, busy, on_leave]
+          description: Search by name or email (case-insensitive, min 1 character)
       responses:
         "200":
-          description: List of employees
+          description: OK
           content:
             application/json:
               schema:
@@ -749,67 +2298,35 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  count:
-                    type: integer
-                    example: 10
-                  total:
-                    type: integer
-                    example: 100
-                  pages:
-                    type: integer
-                    example: 10
-                  currentPage:
-                    type: integer
-                    example: 1
                   data:
                     type: array
                     items:
                       $ref: "#/components/schemas/Employee"
+                  count:
+                    type: integer
+                    description: Total number of matching records
+                  total:
+                    type: integer
+                    description: Total count (same as count)
+                  pages:
+                    type: integer
+                    description: Total number of pages
+                  currentPage:
+                    type: integer
+                    description: Current page number
+                  limit:
+                    type: integer
+                    description: Items per page
+
     post:
       tags: [Employees]
-      summary: Create a new employee
-      security:
-        - bearerAuth: []
+      summary: Create employee
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-                - email
-                - phones
-                - department
-                - position
-                - skills
-              properties:
-                name:
-                  type: string
-                  example: "John Doe"
-                email:
-                  type: string
-                  example: "john@example.com"
-                phones:
-                  type: array
-                  items:
-                    type: string
-                  example: ["+1234567890"]
-                department:
-                  type: string
-                  example: "60f7e7e7e7e7e7e7e7e7e7e1"
-                position:
-                  type: string
-                  example: "60f7e7e7e7e7e7e7e7e7e7e2"
-                skills:
-                  type: array
-                  items:
-                    type: string
-                  example: ["60f7e7e7e7e7e7e7e7e7e7e3"]
-                availability:
-                  type: string
-                  enum: [available, busy, on_leave]
-                  example: "available"
+              $ref: "#/components/schemas/EmployeeCreate"
       responses:
         "201":
           description: Employee created
@@ -824,43 +2341,58 @@ paths:
                   data:
                     $ref: "#/components/schemas/Employee"
         "400":
-          description: Bad request
+          description: |
+            Validation errors:
+            1. Position doesn't belong to the department
+            2. Skills don't exist
+            3. Skills don't belong to the position
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Department or position not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/Error"
 
-  /employees/department/{departmentId}:
+  /employees/all:
     get:
       tags: [Employees]
-      summary: Get employees by department
-      security:
-        - bearerAuth: []
+      summary: List all employees including inactive (for admin use)
+      description: Alternative endpoint to get all employees regardless of isActive status
       parameters:
-        - name: departmentId
-          in: path
-          required: true
-          schema:
-            type: string
         - name: page
           in: query
           schema:
             type: integer
             default: 1
+            minimum: 1
         - name: limit
           in: query
           schema:
             type: integer
             default: 10
+            minimum: 1
+            maximum: 200
+        - name: department
+          in: query
+          schema:
+            $ref: "#/components/schemas/MongoId"
+        - name: position
+          in: query
+          schema:
+            $ref: "#/components/schemas/MongoId"
+        - name: skill
+          in: query
+          schema:
+            $ref: "#/components/schemas/MongoId"
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          schema:
+            type: string
       responses:
         "200":
-          description: List of employees in department
+          description: OK
           content:
             application/json:
               schema:
@@ -869,43 +2401,51 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  count:
-                    type: integer
-                    example: 5
-                  total:
-                    type: integer
-                    example: 25
-                  pages:
-                    type: integer
-                    example: 5
-                  currentPage:
-                    type: integer
-                    example: 1
                   data:
                     type: array
                     items:
                       $ref: "#/components/schemas/Employee"
-        "404":
-          description: Department not found
+                  count:
+                    type: integer
+
+  /employees/department/{departmentId}:
+    get:
+      tags: [Employees]
+      summary: List active employees by department
+      parameters:
+        - in: path
+          name: departmentId
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        200:
+          description: Employees list (only active)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Employee"
 
   /employees/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/MongoId"
     get:
       tags: [Employees]
-      summary: Get an employee by ID
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      summary: Get employee by ID (returns 404 if employee is inactive)
       responses:
-        "200":
+        200:
           description: Employee details
           content:
             application/json:
@@ -917,64 +2457,24 @@ paths:
                     example: true
                   data:
                     $ref: "#/components/schemas/Employee"
-        "403":
-          description: Forbidden (not authorized)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Employee not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        404:
+          description: Employee not found or inactive
+
     patch:
       tags: [Employees]
-      summary: Update an employee
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      summary: Update employee
+      description: |
+        - Cannot update inactive employees (returns 404)
+        - Validates position/department relationship if changed
+        - Validates skills/position relationship if skills changed
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  example: "John Doe Jr."
-                email:
-                  type: string
-                  example: "john.jr@example.com"
-                phones:
-                  type: array
-                  items:
-                    type: string
-                  example: ["+1234567890", "+9876543210"]
-                department:
-                  type: string
-                  example: "60f7e7e7e7e7e7e7e7e7e7e1"
-                position:
-                  type: string
-                  example: "60f7e7e7e7e7e7e7e7e7e7e2"
-                skills:
-                  type: array
-                  items:
-                    type: string
-                  example: ["60f7e7e7e7e7e7e7e7e7e7e3"]
-                availability:
-                  type: string
-                  enum: [available, busy, on_leave]
-                  example: "busy"
+              $ref: "#/components/schemas/EmployeeUpdate"
       responses:
-        "200":
+        200:
           description: Employee updated
           content:
             application/json:
@@ -986,37 +2486,27 @@ paths:
                     example: true
                   data:
                     $ref: "#/components/schemas/Employee"
-        "400":
-          description: Bad request
+        400:
+          description: |
+            Validation errors:
+            1. Position doesn't belong to the department
+            2. Skills don't exist
+            3. Skills don't belong to the position
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Forbidden (not authorized)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Employee not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/Error"
+        404:
+          description: Employee not found or inactive
+
     delete:
       tags: [Employees]
-      summary: Delete (deactivate) an employee
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      summary: Soft delete employee (sets isActive to false)
+      description: |
+        - Sets isActive to false (soft delete)
+        - Returns 404 if employee already inactive
       responses:
-        "200":
+        200:
           description: Employee deactivated
           content:
             application/json:
@@ -1026,21 +2516,327 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  message:
-                    type: string
-                    example: "Employee deactivated successfully"
-        "403":
-          description: Forbidden (not admin)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Employee not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Employee deactivated successfully"
+        404:
+          description: Employee not found or already inactive
 
-security:
-  - bearerAuth: []
+  /employees/{id}/restore:
+    post:
+      tags: [Employees]
+      summary: Restore a soft-deleted employee (sets isActive to true)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        200:
+          description: Employee restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Employee restored successfully"
+        400:
+          description: Employee is already active
+        404:
+          description: Employee not found
+
+  /employees/{id}/permanent:
+    delete:
+      tags: [Employees]
+      summary: Permanently delete employee (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        200:
+          description: Employee permanently deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        $ref: "#/components/schemas/MongoId"
+                      message:
+                        type: string
+                        example: "Employee permanently deleted"
+        404:
+          description: Employee not found
+
+  /employees/bulk/deactivate:
+    post:
+      tags: [Employees]
+      summary: Bulk deactivate employees (soft delete)
+      description: Set isActive to false for multiple employees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDelete"
+      responses:
+        200:
+          description: Employees deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Employees deactivated successfully"
+        404:
+          description: No records found
+
+  # ===================================================================
+  #  PROJECTS
+  # ===================================================================
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List all projects
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/search"
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Project"
+                  count:
+                    type: integer
+    post:
+      tags: [Projects]
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreate"
+      responses:
+        "201":
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}:
+    get:
+      tags: [Projects]
+      summary: Get project by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found
+    patch:
+      tags: [Projects]
+      summary: Update project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdate"
+      responses:
+        "200":
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found
+    delete:
+      tags: [Projects]
+      summary: Delete project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: Project deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+
+  /projects/{id}/client-payments:
+    post:
+      tags: [Projects]
+      summary: Add client payment to project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientPayment"
+      responses:
+        "200":
+          description: Payment added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}/employee-payments:
+    post:
+      tags: [Projects]
+      summary: Add employee payment to project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeePayment"
+      responses:
+        "200":
+          description: Payment added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}/expenses:
+    post:
+      tags: [Projects]
+      summary: Add expense to project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Expense"
+      responses:
+        "200":
+          description: Expense added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}/financials:
+    get:
+      tags: [Projects]
+      summary: Get project financial summary
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: Financial summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FinanceSummary"
+
+  # ===================================================================
+  #  ANALYTICS
+  # ===================================================================
+  /analytics/financeSummary:
+    get:
+      tags: [Analytics]
+      summary: Global financial summary
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FinanceSummary"
