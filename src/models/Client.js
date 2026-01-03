@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const Counter = require("./counter");
 
 const clientSchema = new mongoose.Schema(
   {
