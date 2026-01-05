@@ -112,9 +112,13 @@ app.get("/health", async (req, res) => {
 // UNIVERSAL ROUTE LOADER - WORKS FOR BOTH FACTORIES AND DIRECT ROUTERS
 // ============================================
 
-console.log("🚀 Initializing routes...");
+// ============================================
+// SIMPLE DIRECT ROUTE LOADING - NO FACTORY COMPLEXITY
+// ============================================
 
-// Helper to create placeholder routes
+console.log("🚀 Loading routes directly...");
+
+// Helper to create placeholder routes (keep this same)
 function createPlaceholderRouter(entityName) {
   const router = express.Router();
 
@@ -129,121 +133,60 @@ function createPlaceholderRouter(entityName) {
     });
   });
 
-  router.get("/:id", (req, res) => {
-    res.json({
-      success: true,
-      message: `Get ${entityName} ${req.params.id}`,
-      data: { id: req.params.id, name: "Example" },
-      timestamp: new Date().toISOString(),
-    });
-  });
-
-  router.post("/", (req, res) => {
-    res.status(201).json({
-      success: true,
-      message: `Created ${entityName}`,
-      data: req.body,
-      timestamp: new Date().toISOString(),
-    });
-  });
-
   return router;
 }
 
-// UNIVERSAL ROUTE LOADER - FIXED VERSION
-function loadRouteUniversal(routePath, routeName) {
+// SIMPLE BRUTE-FORCE ROUTE LOADER
+function loadRouteDirectly(routePath, routeName) {
   try {
-    console.log(`🔍 Loading ${routeName} from: ${routePath}`);
+    console.log(`🔄 Loading: ${routePath}`);
 
-    // Clear require cache for development
-    if (process.env.NODE_ENV === "development") {
-      const resolvedPath = require.resolve(routePath);
-      delete require.cache[resolvedPath];
+    // Clear require cache
+    delete require.cache[require.resolve(routePath)];
+
+    // Load the module
+    const module = require(routePath);
+
+    // DEBUG: Check what we got
+    console.log(`   Type: ${typeof module}`);
+    console.log(`   Is router? ${module && module.stack ? "YES" : "NO"}`);
+
+    // If it's already a router, return it
+    if (module && module.stack) {
+      console.log(
+        `✅ Loaded router for ${routeName} with ${module.stack.length} handlers`
+      );
+      return module;
     }
 
-    // Load the route module
-    const routeModule = require(routePath);
-
-    // DEBUG logging
-    console.log(`📦 ${routeName} module type:`, typeof routeModule);
-
-    // CASE 1: Already a router object (your routes export this)
-    if (routeModule && routeModule.stack && Array.isArray(routeModule.stack)) {
-      console.log(`✅ ${routeName} is already a router (direct export)`);
-      return routeModule;
-    }
-
-    // CASE 2: Factory function
-    if (typeof routeModule === "function") {
-      console.log(`⚙️ ${routeName} is a factory function`);
-
-      const router = express.Router();
-      const paramCount = routeModule.length;
-
+    // If it's a function, call it
+    if (typeof module === "function") {
       try {
-        if (paramCount === 0) {
-          // Factory creates its own router
-          const result = routeModule();
-          if (result && result.stack) {
-            console.log(`✅ ${routeName} factory returned router`);
-            return result;
-          }
-          console.warn(
-            `⚠️ ${routeName} factory returned non-router, using created router`
-          );
-          return router;
-        } else if (paramCount === 1) {
-          // Factory expects router parameter
-          return routeModule(router);
-        } else if (paramCount === 2) {
-          // Try to load controller
-          try {
-            // Clean route name for controller lookup (remove 'Routes' suffix and plural 's')
-            let controllerName = routeName;
-            if (controllerName.endsWith("Routes")) {
-              controllerName = controllerName.replace("Routes", "");
-            }
-            if (controllerName.endsWith("s")) {
-              controllerName = controllerName.slice(0, -1);
-            }
-
-            const controllerPath = `../src/controllers/${controllerName}Controller`;
-            const controller = require(controllerPath);
-            console.log(`✅ Loaded controller for ${routeName}`);
-            return routeModule(router, controller);
-          } catch (controllerError) {
-            console.warn(
-              `⚠️ Could not load controller for ${routeName}:`,
-              controllerError.message
-            );
-            return routeModule(router, {});
-          }
-        } else {
-          // Complex factory - try with router
-          return routeModule(router);
+        const router = express.Router();
+        const result = module(router);
+        if (result && result.stack) {
+          console.log(`✅ Factory created router for ${routeName}`);
+          return result;
         }
-      } catch (factoryError) {
-        console.error(
-          `❌ Factory execution failed for ${routeName}:`,
-          factoryError.message
-        );
-        throw factoryError;
+        console.warn(`⚠️ Factory didn't return router for ${routeName}`);
+        return router;
+      } catch (err) {
+        console.error(`❌ Factory error for ${routeName}:`, err.message);
+        throw err;
       }
     }
 
-    // CASE 3: Unknown export type
-    console.warn(
-      `⚠️ ${routeName} has unknown export type, attempting to use as router`
-    );
-    return routeModule;
+    // If we get here, something is wrong
+    throw new Error(`Unknown export type from ${routePath}`);
   } catch (error) {
-    console.error(`❌ Failed to load ${routeName}:`, error.message);
-    throw error; // Re-throw to be caught by outer handler
+    console.error(`❌ CRITICAL: Failed to load ${routeName}:`, error.message);
+    console.error(error.stack);
+    throw error;
   }
 }
 
-// Define all routes with their paths
-const routeConfigs = [
+// Define routes to load
+const routes = [
   { path: "../src/routes/auth", name: "auth" },
   { path: "../src/routes/clientRoutes", name: "clients" },
   { path: "../src/routes/employeeRoutes", name: "employees" },
@@ -255,99 +198,104 @@ const routeConfigs = [
   { path: "../src/routes/financeRoutes", name: "finance" },
 ];
 
-// Load and mount all routes
-routeConfigs.forEach(({ path, name }) => {
+// Load and mount each route
+routes.forEach(({ path, name }) => {
+  console.log(`\n📌 Processing: /api/${name}`);
+
   try {
-    console.log(`\n🔄 Processing route: ${name}`);
-    const router = loadRouteUniversal(path, name);
+    const router = loadRouteDirectly(path, name);
 
-    // Validate it's a router
-    if (router && router.stack && Array.isArray(router.stack)) {
-      app.use(`/api/${name}`, router);
-      console.log(
-        `✅ SUCCESS: Mounted /api/${name} with ${router.stack.length} route handlers`
-      );
+    // Mount the router
+    app.use(`/api/${name}`, router);
+    console.log(`✅ MOUNTED: /api/${name}`);
 
-      // Log mounted routes for debugging
-      if (router.stack.length > 0) {
-        console.log(`📋 Routes for /api/${name}:`);
-        router.stack.forEach((layer) => {
-          if (layer.route) {
-            const methods = Object.keys(layer.route.methods)
-              .map((m) => m.toUpperCase())
-              .join(", ");
-            const path = layer.route.path;
-            console.log(`   ${methods.padEnd(8)} ${path}`);
-          }
-        });
-      }
-    } else {
-      console.error(`❌ ${name} did not return a valid Router`);
-      console.error(`   Got:`, router?.constructor?.name);
-      throw new Error(`Invalid router returned from ${name}`);
+    // Log the routes
+    if (router.stack) {
+      router.stack.forEach((layer, i) => {
+        if (layer.route) {
+          const methods = Object.keys(layer.route.methods)
+            .map((m) => m.toUpperCase())
+            .join(", ");
+          console.log(`   ${i + 1}. ${methods} ${layer.route.path}`);
+        }
+      });
     }
   } catch (error) {
-    console.error(`🚨 ERROR mounting /api/${name}:`, error.message);
-    console.log(`⚠️ Using placeholder router for /api/${name}`);
-    app.use(`/api/${name}`, createPlaceholderRouter(name));
+    console.error(`❌ FAILED to mount /api/${name}:`, error.message);
+
+    // Create emergency route for debugging
+    const emergencyRouter = express.Router();
+    emergencyRouter.get("/", (req, res) => {
+      res.status(503).json({
+        success: false,
+        message: `Route /api/${name} failed to load`,
+        error: error.message,
+        path: path,
+        timestamp: new Date().toISOString(),
+        debug: {
+          node_env: process.env.NODE_ENV,
+          cwd: process.cwd(),
+          __dirname: __dirname,
+        },
+      });
+    });
+
+    app.use(`/api/${name}`, emergencyRouter);
+    console.log(`⚠️ Mounted emergency route for /api/${name}`);
   }
 });
 
-// Try analytics separately
+// Special case for analytics
 try {
   const analyticsPath = "../src/routes/analyticsRoutes";
-  console.log(`\n🔍 Loading analytics from: ${analyticsPath}`);
+  console.log(`\n📌 Processing: /api/analytics`);
 
   const analyticsModule = require(analyticsPath);
-
-  if (typeof analyticsModule === "function") {
+  if (analyticsModule && analyticsModule.stack) {
+    app.use("/api/analytics", analyticsModule);
+    console.log("✅ MOUNTED: /api/analytics (direct)");
+  } else if (typeof analyticsModule === "function") {
     const analyticsRouter = express.Router();
     app.use("/api/analytics", analyticsModule(analyticsRouter));
-    console.log("✅ Mounted /api/analytics (factory)");
-  } else if (analyticsModule && analyticsModule.stack) {
-    app.use("/api/analytics", analyticsModule);
-    console.log("✅ Mounted /api/analytics (direct)");
-  } else {
-    console.warn("⚠️ Analytics module is not a valid router");
+    console.log("✅ MOUNTED: /api/analytics (factory)");
   }
 } catch (e) {
-  console.log("ℹ️ Analytics routes not found or failed to load, skipping...");
+  console.log("ℹ️ Analytics routes not found, skipping...");
 }
-
 // ============================================
 // TEST ENDPOINTS FOR VERIFICATION
 // ============================================
 
 // Route verification endpoint
-app.get("/api/routes-debug", (req, res) => {
-  const routes = [];
+// Debug endpoint to check what's loaded
+app.get("/api/debug-loaded-routes", (req, res) => {
+  const loadedRoutes = [];
 
-  // Collect all mounted routes
   app._router.stack.forEach((middleware) => {
-    if (middleware.route) {
-      // Direct routes
-      routes.push({
-        path: middleware.route.path,
-        methods: Object.keys(middleware.route.methods),
-      });
-    } else if (middleware.name === "router") {
-      // Router middleware
-      middleware.handle.stack.forEach((handler) => {
-        if (handler.route) {
-          routes.push({
-            path: handler.route.path,
-            methods: Object.keys(handler.route.methods),
-            mountedAt: middleware.regexp.toString(),
-          });
-        }
+    if (middleware.name === "router") {
+      const path = middleware.regexp.toString();
+      const handlers = middleware.handle.stack.length;
+      loadedRoutes.push({
+        path: path,
+        handlers: handlers,
+        routes: middleware.handle.stack
+          .map((layer) => {
+            if (layer.route) {
+              return {
+                methods: Object.keys(layer.route.methods),
+                path: layer.route.path,
+              };
+            }
+            return null;
+          })
+          .filter(Boolean),
       });
     }
   });
 
   res.json({
     success: true,
-    totalRoutes: routes.length,
-    routes: routes,
+    loadedRoutes: loadedRoutes,
     timestamp: new Date().toISOString(),
   });
 });
