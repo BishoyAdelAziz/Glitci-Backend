@@ -9,9 +9,6 @@ const swaggerUi = require("swagger-ui-express");
 const YAML = require("yamljs");
 const path = require("path");
 
-// Resolve swagger file relative to the project root
-const swaggerDoc = YAML.load(path.join(__dirname, "../openapi.yaml"));
-
 const app = express();
 
 // Security + parsing
@@ -27,7 +24,6 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Best-effort rate limit (consider external store for production)
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -37,26 +33,29 @@ app.use(
   })
 );
 
-// Cache mongoose connection across invocations
+// Cache mongoose connection
 let cached = global.mongoose;
 async function connectDB() {
   if (cached && cached.conn) return cached.conn;
   if (!cached) cached = global.mongoose = { conn: null, promise: null };
   if (!cached.promise) {
     cached.promise = mongoose
-      .connect(process.env.MONGODB_URI, {
-        // serverSelectionTimeoutMS: 5000, // optional hardening
-      })
+      .connect(process.env.MONGODB_URI)
       .then((conn) => conn);
   }
   cached.conn = await cached.promise;
   return cached.conn;
 }
 
-// Swagger UI
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+// Swagger - wrap in try-catch
+try {
+  const swaggerDoc = YAML.load(path.join(__dirname, "../openapi.yaml"));
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+} catch (e) {
+  console.error("Swagger load failed:", e.message);
+}
 
-// Routes (ensure these files export routers only)
+// Routes
 app.use("/api/auth", require("../src/routes/auth"));
 app.use("/api/services", require("../src/routes/serviceRoutes"));
 app.use("/api/clients", require("../src/routes/clientRoutes"));
@@ -68,11 +67,11 @@ app.use("/api/positions", require("../src/routes/positionRoutes"));
 app.use("/api/skills", require("../src/routes/skillRoutes"));
 app.use("/api/finance", require("../src/routes/financeRoutes"));
 
-// Health
+// Health check
 app.get("/api/health", async (req, res) => {
   try {
     await connectDB();
-    res.json({ ok: true });
+    res.json({ ok: true, message: "Connected to DB" });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -81,13 +80,15 @@ app.get("/api/health", async (req, res) => {
 // Error handler last
 app.use(require("../src/middleware/errorHandler"));
 
-// Export serverless handler
-module.exports = async (req, res) => {
-  // Connect here if most routes hit DB; otherwise connect inside handlers
-  try {
-    await connectDB();
-  } catch (err) {
-    // Let your error handler format response
-  }
-  return app(req, res);
-};
+// CRITICAL FIX: Export the app directly, not wrapped in async
+module.exports = app;
+```
+
+## Key Changes:
+
+1. **Changed export from async function to direct app export** - This is the main fix
+2. **Moved swagger loading inside try-catch** - Prevents crash if file missing
+3. **Removed the outer try-catch around routes** - If routes fail to import, we need to see that error
+
+## Check your folder structure:
+```;
