@@ -1,0 +1,9 @@
+node_modules/
+.env
+.DS_Store
+.vscode/
+# Vercel
+.vercel
+.next
+out
+dist
