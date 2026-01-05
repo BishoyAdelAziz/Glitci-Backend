@@ -55,6 +55,16 @@ try {
   console.error("Swagger load failed:", e.message);
 }
 
+// Health check (moved before routes so it's always accessible)
+app.get("/api/health", async (req, res) => {
+  try {
+    await connectDB();
+    res.json({ ok: true, message: "Connected to DB" });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Routes
 app.use("/api/auth", require("../src/routes/auth"));
 app.use("/api/services", require("../src/routes/serviceRoutes"));
@@ -67,28 +77,22 @@ app.use("/api/positions", require("../src/routes/positionRoutes"));
 app.use("/api/skills", require("../src/routes/skillRoutes"));
 app.use("/api/finance", require("../src/routes/financeRoutes"));
 
-// Health check
-app.get("/api/health", async (req, res) => {
-  try {
-    await connectDB();
-    res.json({ ok: true, message: "Connected to DB" });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
+// Error handler - inline instead of requiring external file
+app.use((err, req, res, next) => {
+  console.error("Error:", err.message);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || "Internal server error",
+  });
 });
 
-// Error handler last
-app.use(require("../src/middleware/errorHandler"));
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: "Route not found",
+    path: req.path,
+  });
+});
 
-// CRITICAL FIX: Export the app directly, not wrapped in async
 module.exports = app;
-```
-
-## Key Changes:
-
-1. **Changed export from async function to direct app export** - This is the main fix
-2. **Moved swagger loading inside try-catch** - Prevents crash if file missing
-3. **Removed the outer try-catch around routes** - If routes fail to import, we need to see that error
-
-## Check your folder structure:
-```;
