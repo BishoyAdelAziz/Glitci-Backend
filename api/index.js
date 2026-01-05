@@ -5,7 +5,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
-
+const path = require("path");
+const fs = require("fs");
 const app = express();
 
 // 🔴 CRITICAL FIX: Trust proxy for Vercel
