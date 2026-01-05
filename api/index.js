@@ -10,7 +10,7 @@ const YAML = require("yamljs");
 const path = require("path");
 
 // Resolve swagger file relative to the project root
-const swaggerDoc = YAML.load(path.resolve(process.cwd(), "openapi.yaml"));
+const swaggerDoc = YAML.load(path.join(__dirname, "../openapi.yaml"));
 
 const app = express();
 
