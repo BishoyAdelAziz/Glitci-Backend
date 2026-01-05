@@ -187,15 +187,15 @@ function loadRouteDirectly(routePath, routeName) {
 
 // Define routes to load
 const routes = [
-  { path: "../src/routes/auth", name: "auth" },
-  { path: "../src/routes/clientRoutes", name: "clients" },
-  { path: "../src/routes/employeeRoutes", name: "employees" },
-  { path: "../src/routes/projectRoutes", name: "projects" },
-  { path: "../src/routes/departmentRoutes", name: "departments" },
-  { path: "../src/routes/positionRoutes", name: "positions" },
-  { path: "../src/routes/skillRoutes", name: "skills" },
-  { path: "../src/routes/serviceRoutes", name: "services" },
-  { path: "../src/routes/financeRoutes", name: "finance" },
+  { path: "../src/routes/auth.js", name: "auth" },
+  { path: "../src/routes/clientRoutes.js", name: "clients" },
+  { path: "../src/routes/employeeRoutes.js", name: "employees" },
+  { path: "../src/routes/projectRoutes.js", name: "projects" },
+  { path: "../src/routes/departmentRoutes.js", name: "departments" },
+  { path: "../src/routes/positionRoutes.js", name: "positions" },
+  { path: "../src/routes/skillRoutes.js", name: "skills" },
+  { path: "../src/routes/serviceRoutes.js", name: "services" },
+  { path: "../src/routes/financeRoutes.js", name: "finance" },
 ];
 
 // Load and mount each route
