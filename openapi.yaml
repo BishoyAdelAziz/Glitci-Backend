@@ -16,6 +16,7 @@ tags:
   - name: Departments
   - name: Positions
   - name: Skills
+  - name: Finance
 
 security:
   - bearerAuth: []
@@ -185,6 +186,7 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/MongoId"
+
     # ---------- SERVICE ----------
     Service:
       type: object
@@ -256,6 +258,7 @@ components:
           $ref: "#/components/schemas/MongoId"
         isActive:
           type: boolean
+
     # ---------- DEPARTMENTS ----------
     Department:
       type: object
@@ -537,16 +540,6 @@ components:
             $ref: "#/components/schemas/MongoId"
         isActive:
           type: boolean
-
-    BulkDelete:
-      type: object
-      required: [ids]
-      properties:
-        ids:
-          type: array
-          minItems: 1
-          items:
-            $ref: "#/components/schemas/MongoId"
 
     # ---------- PROJECT RELATED SCHEMAS ----------
     EmployeeAssignment:
@@ -830,29 +823,40 @@ components:
         isActive:
           type: boolean
 
+    # ---------- FINANCE SCHEMAS ----------
     FinanceSummary:
       type: object
       properties:
         budget:
           type: number
+          example: 15000
         moneyCollected:
           type: number
+          example: 7500
         moneyPaid:
           type: number
+          example: 4000
         totalCost:
           type: number
+          example: 8000
         grossProfit:
           type: number
+          example: 7000
         netProfitToDate:
           type: number
+          example: 3500
         clientBalanceDue:
           type: number
+          example: 7500
         employeeBalanceDue:
           type: number
+          example: 4000
         totalEmployeeCompensation:
           type: number
+          example: 7000
         totalExpenses:
           type: number
+          example: 1000
 
   parameters:
     skip:
@@ -894,6 +898,34 @@ components:
       name: isActive
       in: query
       schema: { type: boolean }
+    startDate:
+      name: startDate
+      in: query
+      schema:
+        type: string
+        format: date
+      description: Start date for filtering financial records
+    endDate:
+      name: endDate
+      in: query
+      schema:
+        type: string
+        format: date
+      description: End date for filtering financial records
+    status:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [planning, active, on_hold, completed, cancelled]
+      description: Filter projects by status
+    projectStatus:
+      name: projectStatus
+      in: query
+      schema:
+        type: string
+        enum: [planning, active, on_hold, completed, cancelled]
+      description: Filter projects by status
 
 paths:
   # ===================================================================
@@ -1075,9 +1107,6 @@ paths:
   # ===================================================================
   #  CLIENTS
   # ===================================================================
-    # ===================================================================
-  #  CLIENTS
-  # ===================================================================
   /clients:
     get:
       tags: [Clients]
@@ -1086,7 +1115,7 @@ paths:
         **Search Behavior:** 
         - First searches by client name
         - If no name matches, searches by company name
-        
+
         Default sorting is by client name ascending.
       parameters:
         - $ref: "#/components/parameters/page"
@@ -1399,35 +1428,7 @@ paths:
           description: Invalid IDs provided
         "404":
           description: No clients found with provided IDs
-    tags: [Clients]
-    summary: Restore a soft-deleted client
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          $ref: "#/components/schemas/MongoId"
-    responses:
-      "200":
-        description: Client restored
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                success:
-                  type: boolean
-                  example: true
-                data:
-                  type: object
-                  properties:
-                    id:
-                      $ref: "#/components/schemas/MongoId"
-                    message:
-                      type: string
-                      example: "Client restored successfully"
-      "404":
-        description: Client not found
+
   # ===================================================================
   #  DEPARTMENTS
   # ===================================================================
@@ -1535,9 +1536,6 @@ paths:
                   id:
                     $ref: "#/components/schemas/MongoId"
 
-  # ===================================================================
-  #  SERVICES
-  # ===================================================================
   # ===================================================================
   #  SERVICES
   # ===================================================================
@@ -1927,6 +1925,7 @@ paths:
           description: Invalid IDs provided
         "404":
           description: No services found with provided IDs
+
   # ===================================================================
   #  POSITIONS
   # ===================================================================
@@ -1935,7 +1934,7 @@ paths:
       tags: [Positions]
       summary: List positions (paginated & filtered)
       parameters:
-        - $ref: "#/components/parameters/skip"
+        - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/department"
         - $ref: "#/components/parameters/search"
@@ -1949,10 +1948,8 @@ paths:
                 type: object
                 properties:
                   data:
-                    {
-                      type: array,
-                      items: { $ref: "#/components/schemas/Position" },
-                    }
+                    type: array
+                    items: { $ref: "#/components/schemas/Position" }
                   count:
                     type: integer
 
@@ -2000,10 +1997,8 @@ paths:
                 type: object
                 properties:
                   data:
-                    {
-                      type: array,
-                      items: { $ref: "#/components/schemas/Position" },
-                    }
+                    type: array
+                    items: { $ref: "#/components/schemas/Position" }
 
   /positions/{id}:
     parameters:
@@ -2103,10 +2098,8 @@ paths:
                 type: object
                 properties:
                   data:
-                    {
-                      type: array,
-                      items: { $ref: "#/components/schemas/Skill" },
-                    }
+                    type: array
+                    items: { $ref: "#/components/schemas/Skill" }
                   count:
                     type: integer
 
@@ -2154,10 +2147,8 @@ paths:
                 type: object
                 properties:
                   data:
-                    {
-                      type: array,
-                      items: { $ref: "#/components/schemas/Skill" },
-                    }
+                    type: array
+                    items: { $ref: "#/components/schemas/Skill" }
 
   /skills/{id}:
     parameters:
@@ -2840,3 +2831,371 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FinanceSummary"
+
+  # ===================================================================
+  #  FINANCE ROUTES
+  # ===================================================================
+  /finance/projects/{projectId}/client-installments:
+    post:
+      tags: [Finance]
+      summary: Add client installment to project
+      description: Add a payment received from client for a specific project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientPayment"
+      responses:
+        "201":
+          description: Client installment added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Project"
+                  message:
+                    type: string
+                    example: "Client installment added successfully"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+
+  /finance/projects/{projectId}/employee-payments:
+    post:
+      tags: [Finance]
+      summary: Add employee payment to project
+      description: Add a payment made to an employee for work on a specific project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeePayment"
+      responses:
+        "201":
+          description: Employee payment added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Project"
+                  message:
+                    type: string
+                    example: "Employee payment added successfully"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project or employee not found
+
+  /finance/projects/{projectId}/expenses:
+    post:
+      tags: [Finance]
+      summary: Add expense to project
+      description: Add an expense incurred for a specific project (hosting, software, etc.)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Expense"
+      responses:
+        "201":
+          description: Expense added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Project"
+                  message:
+                    type: string
+                    example: "Expense added successfully"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+
+  /finance/projects/{projectId}/report:
+    get:
+      tags: [Finance]
+      summary: Get project finance report
+      description: Get comprehensive financial report for a specific project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MongoId"
+      responses:
+        "200":
+          description: Project finance report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      project:
+                        type: object
+                        properties:
+                          id:
+                            $ref: "#/components/schemas/MongoId"
+                          name:
+                            type: string
+                            example: "Website Redesign"
+                          client:
+                            $ref: "#/components/schemas/Client"
+                          budget:
+                            type: number
+                            example: 15000
+                          status:
+                            type: string
+                            example: "active"
+                      financials:
+                        $ref: "#/components/schemas/FinanceSummary"
+                      transactions:
+                        type: object
+                        properties:
+                          clientPayments:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/ClientPayment"
+                          employeePayments:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/EmployeePayment"
+                          expenses:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Expense"
+                      employees:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/EmployeeAssignment"
+        "404":
+          description: Project not found
+
+  /finance/report:
+    get:
+      tags: [Finance]
+      summary: Get company finance report
+      description: Get comprehensive financial report across all projects with filters
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Start date for filtering projects
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: End date for filtering projects
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [planning, active, on_hold, completed, cancelled]
+          description: Filter projects by status
+        - name: department
+          in: query
+          schema:
+            $ref: "#/components/schemas/MongoId"
+          description: Filter by department ID
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+          description: Filter by project active status
+      responses:
+        "200":
+          description: Company finance report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      summary:
+                        type: object
+                        properties:
+                          totalProjects:
+                            type: integer
+                            example: 5
+                          totalBudget:
+                            type: number
+                            example: 75000
+                          totalCollected:
+                            type: number
+                            example: 45000
+                          totalPaid:
+                            type: number
+                            example: 25000
+                          totalExpenses:
+                            type: number
+                            example: 5000
+                          totalProfit:
+                            type: number
+                            example: 15000
+                          outstandingClients:
+                            type: number
+                            example: 30000
+                          outstandingEmployees:
+                            type: number
+                            example: 20000
+                      projects:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            projectId:
+                              $ref: "#/components/schemas/MongoId"
+                            projectName:
+                              type: string
+                              example: "Website Redesign"
+                            client:
+                              $ref: "#/components/schemas/Client"
+                            budget:
+                              type: number
+                              example: 15000
+                            moneyCollected:
+                              type: number
+                              example: 7500
+                            moneyPaid:
+                              type: number
+                              example: 4000
+                            totalExpenses:
+                              type: number
+                              example: 1000
+                            netProfitToDate:
+                              type: number
+                              example: 2500
+
+  /finance/dashboard:
+    get:
+      tags: [Finance]
+      summary: Get financial dashboard
+      description: Get quick financial overview and recent active projects
+      responses:
+        "200":
+          description: Finance dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      quickStats:
+                        type: object
+                        properties:
+                          activeProjects:
+                            type: integer
+                            example: 3
+                          totalCashIn:
+                            type: number
+                            example: 45000
+                          totalCashOut:
+                            type: number
+                            example: 30000
+                          netCashFlow:
+                            type: number
+                            example: 15000
+                      recentProjects:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              $ref: "#/components/schemas/MongoId"
+                            name:
+                              type: string
+                              example: "Website Redesign"
+                            client:
+                              type: object
+                              properties:
+                                _id:
+                                  $ref: "#/components/schemas/MongoId"
+                                name:
+                                  type: string
+                                  example: "John Doe"
+                                companyName:
+                                  type: string
+                                  example: "Acme Corp"
+                            budget:
+                              type: number
+                              example: 15000
+                            status:
+                              type: string
+                              example: "active"
+                            moneyCollected:
+                              type: number
+                              example: 7500
+                            moneyPaid:
+                              type: number
+                              example: 4000
+                            netProfitToDate:
+                              type: number
+                              example: 2500

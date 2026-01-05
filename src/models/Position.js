@@ -17,9 +17,7 @@ const positionSchema = new mongoose.Schema(
       ref: "Department",
       required: true,
     },
-    skills: {
-      skills: [{ type: mongoose.Schema.Types.ObjectId, ref: "Skill" }],
-    },
+    skills: [{ type: mongoose.Schema.Types.ObjectId, ref: "Skill" }],
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }

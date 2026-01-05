@@ -4,23 +4,24 @@ const AppError = require("../utils/AppError");
 
 const listPositions = async (
   filters = {},
-  { skip, limit } = { skip: 0, limit: 50 }
+  { skip = 0, limit = 10 } = {} // Accept skip as separate parameter
 ) => {
   const q = {};
 
   if (filters.department) q.department = filters.department;
-
   if (filters.search) {
     q.$or = [{ name: { $regex: filters.search, $options: "i" } }];
   }
-
   if (filters.isActive !== undefined) q.isActive = filters.isActive;
   else q.isActive = true;
+
+  // Remove skip from filters if it somehow got there
+  delete filters.skip;
 
   const [data, count] = await Promise.all([
     Position.find(q)
       .populate("department", "name")
-      .populate("skills", "name") // ← ADD THIS LINE
+      .populate("skills", "name")
       .skip(skip)
       .limit(limit)
       .sort({ name: 1 })

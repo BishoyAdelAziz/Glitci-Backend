@@ -10,18 +10,24 @@ const validate = (validations) => async (req, res, next) => {
 };
 
 /* Joi runner (for big schemas) */
-const validateRequest =
-  (schema, property = "body") =>
-  (req, res, next) => {
+const validateRequest = (schema, property = "body") => {
+  return (req, res, next) => {
     const { error, value } = schema.validate(req[property], {
       abortEarly: false,
+      allowUnknown: false,
     });
-    if (error)
-      return next(
-        new AppError(error.details.map((d) => d.message).join(", "), 400)
-      );
-    req[property] = value; // overwrite with casted values
+
+    if (error) {
+      const errors = error.details.map((detail) => ({
+        field: detail.path.join("."),
+        message: detail.message.replace(/['"]/g, ""),
+      }));
+
+      return next(new AppError("Validation Error", 400, errors));
+    }
+
+    req[property] = value;
     next();
   };
-
+};
 module.exports = { validate, validateRequest }; // ✅ export object

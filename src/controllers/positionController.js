@@ -8,15 +8,29 @@ const {
 const { getPaginationData, paginate } = require("../utils/pagination");
 
 exports.getPositions = asyncHandler(async (req, res) => {
+  // Get pagination data WITHOUT modifying req.query
   const { skip, limit, page } = getPaginationData(
     req.query.page,
     req.query.limit
   );
-  const { data, count } = await positionService.listPositions(req.query, {
+
+  // Create a clean filters object without skip
+  const filters = { ...req.query };
+  // Remove pagination parameters from filters
+  delete filters.page;
+  delete filters.limit;
+
+  const { data, count } = await positionService.listPositions(filters, {
     skip,
     limit,
   });
-  res.json({ success: true, count, ...paginate({ count }, page, limit), data });
+
+  res.json({
+    success: true,
+    count,
+    ...paginate({ count }, page, limit),
+    data,
+  });
 });
 
 exports.getPositionsByDepartment = asyncHandler(async (req, res) => {

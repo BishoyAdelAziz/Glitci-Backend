@@ -13,7 +13,7 @@ const employeeAssignmentSchema = Joi.object({
 });
 
 const clientPaymentSchema = Joi.object({
-  amount: Joi.number().min(0).required(),
+  amount: Joi.number().required(),
   notes: Joi.string().trim().max(500).allow(""),
   date: Joi.date().default(Date.now),
   paymentMethod: Joi.string()
@@ -24,7 +24,7 @@ const clientPaymentSchema = Joi.object({
 
 const employeePaymentSchema = Joi.object({
   employee: mongoId.required(),
-  amount: Joi.number().min(0).required(),
+  amount: Joi.number().required(), // ← This allows negative numbers!
   notes: Joi.string().trim().max(500).allow(""),
   date: Joi.date().default(Date.now),
   paymentMethod: Joi.string()
@@ -34,7 +34,7 @@ const employeePaymentSchema = Joi.object({
 
 const expenseSchema = Joi.object({
   description: Joi.string().trim().min(2).max(200).required(),
-  amount: Joi.number().min(0).required(),
+  amount: Joi.number().required(),
   category: Joi.string()
     .valid("equipment", "software", "travel", "marketing", "office", "other")
     .required(),

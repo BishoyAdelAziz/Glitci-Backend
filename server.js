@@ -55,6 +55,7 @@ app.use("/api/analytics", require("./src/routes/analyticsRoutes"));
 app.use("/api/departments", require("./src/routes/departmentRoutes"));
 app.use("/api/positions", require("./src/routes/positionRoutes"));
 app.use("/api/skills", require("./src/routes/skillRoutes"));
+app.use("/api/finance", require("./src/routes/financeRoutes"));
 // Error handling
 app.use(errorHandler);
 const PORT = process.env.PORT || 5000;

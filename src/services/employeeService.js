@@ -1,7 +1,7 @@
 const Employee = require("../models/Employee");
 const AppError = require("../utils/AppError");
 const toObjectId = require("../utils/toObjectId");
-const { validateIdsExist } = require("../utils/validateIdsExist");
+const validateIdsExist = require("../utils/validateIdsExist");
 const Position = require("../models/Position");
 const Skill = require("../models/Skill");
 

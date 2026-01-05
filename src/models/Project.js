@@ -65,7 +65,6 @@ const employeePaymentSchema = new mongoose.Schema({
   amount: {
     type: Number,
     required: true,
-    min: 0,
   },
   notes: {
     type: String,
@@ -281,6 +280,47 @@ projectSchema.pre("save", function (next) {
   this.employeeBalanceDue = Math.max(0, totalEmployeeComp - this.moneyPaid);
 
   next();
+});
+
+// After adding a client payment in project - FIXED VERSION
+projectSchema.post("save", async function (doc) {
+  try {
+    if (doc.clientPayments && doc.clientPayments.length > 0) {
+      const lastPayment = doc.clientPayments[doc.clientPayments.length - 1];
+
+      // Import the FinancialRecord model dynamically to avoid circular dependency
+      let FinancialRecord;
+      try {
+        // Try to get the model if it's already registered
+        FinancialRecord = mongoose.model("FinancialRecord");
+      } catch (error) {
+        // If not registered, require and register it
+        const FinancialRecordSchema = require("./FinancialRecord");
+        FinancialRecord = mongoose.model(
+          "FinancialRecord",
+          FinancialRecordSchema.schema
+        );
+      }
+
+      // Create financial record for this payment
+      await FinancialRecord.create({
+        recordType: "client_installment",
+        client: doc.client,
+        project: doc._id,
+        amount: lastPayment.amount,
+        description: `Payment for project: ${doc.name}`,
+        category: "client_payment",
+        paymentMethod: lastPayment.paymentMethod,
+        date: lastPayment.date,
+        referenceNumber: lastPayment.reference,
+        addedBy: lastPayment.addedBy,
+        status: "completed",
+      });
+    }
+  } catch (error) {
+    // Log error but don't throw to prevent breaking the save operation
+    console.error("Error creating financial record:", error.message);
+  }
 });
 
 // Indexes
