@@ -1,4 +1,4 @@
-// api/index.js - FIXED FOR YOUR STRUCTURE
+// api/index.js - FINAL WORKING VERSION
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -6,6 +6,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
 
@@ -19,9 +20,14 @@ app.use(
   })
 );
 
+// CORS - allow your frontend
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: [
+      "https://glitciapp.vercel.app",
+      "https://glitciapp-*.vercel.app",
+      "http://localhost:3000",
+    ],
     credentials: true,
     optionsSuccessStatus: 200,
   })
@@ -38,7 +44,6 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    // Use X-Forwarded-For header in Vercel
     return req.headers["x-forwarded-for"] || req.ip;
   },
 });
@@ -110,264 +115,350 @@ app.get("/health", async (req, res) => {
 });
 
 // ============================================
-// ROUTE LOADING - FIXED PATH RESOLUTION
+// SIMPLE DIRECT ROUTE LOADING - NO COMPLEXITY
 // ============================================
 
-console.log("🚀 Initializing routes...");
-console.log("Current directory:", __dirname); // /var/task/api
-console.log("Project root:", path.join(__dirname, "..")); // /var/task
+console.log("🚀 Loading routes directly...");
 
-// Helper to resolve paths correctly for Vercel
-function resolveRoutePath(routeName) {
-  // Vercel runs from /var/task/api, so:
-  // __dirname = /var/task/api
-  // We need: /var/task/src/routes/...
-
-  const routesDir = path.join(__dirname, "..", "src", "routes");
-  const routePath = path.join(routesDir, `${routeName}.js`);
-
-  console.log(`🔍 Looking for ${routeName} at: ${routePath}`);
-  return routePath;
-}
-
-// Helper to load a route with proper error handling
-function loadRoute(routeName, mountPath) {
+// Function to load routes the simple way
+function loadRouteDirect(routeName, apiPath) {
   try {
-    console.log(`\n📦 Loading ${routeName}...`);
+    console.log(`\n🔧 Loading ${routeName} for ${apiPath}`);
 
-    // Resolve the correct path
-    const routePath = resolveRoutePath(routeName);
+    // Build the correct path for Vercel
+    // From: /var/task/api/index.js
+    // To: /var/task/src/routes/[routeName].js
+    const routePath = path.join(
+      __dirname,
+      "..",
+      "src",
+      "routes",
+      `${routeName}.js`
+    );
 
-    // Try to load the route
-    const routeModule = require(routePath);
+    console.log(`   Looking at: ${routePath}`);
 
-    // Check what we got
-    if (routeModule && typeof routeModule === "object" && routeModule.stack) {
-      // It's already a router
-      console.log(
-        `✅ ${routeName} is a router with ${routeModule.stack.length} handlers`
-      );
-      return routeModule;
-    } else if (typeof routeModule === "function") {
-      // It's a factory function
-      console.log(`⚙️ ${routeName} is a factory function`);
-      const router = express.Router();
-      const result = routeModule(router);
-      return result || router;
-    } else {
-      console.warn(`⚠️ ${routeName} has unknown export type`);
+    // Check if file exists
+    if (!fs.existsSync(routePath)) {
+      console.log(`   ❌ File not found: ${routePath}`);
       return null;
     }
+
+    console.log(`   ✅ File exists, loading...`);
+
+    // Clear require cache
+    delete require.cache[require.resolve(routePath)];
+
+    // Load the route module
+    const routeModule = require(routePath);
+
+    if (!routeModule) {
+      console.log(`   ❌ Module loaded but is empty`);
+      return null;
+    }
+
+    console.log(`   ✅ Module loaded successfully`);
+
+    return routeModule;
   } catch (error) {
-    console.error(`❌ Failed to load ${routeName}:`, error.message);
-
-    // Check if the file exists
-    const fs = require("fs");
-    const routePath = resolveRoutePath(routeName);
-    console.log(`   File exists: ${fs.existsSync(routePath)}`);
-    console.log(`   Error details:`, error.code);
-
+    console.error(`   ❌ Error loading ${routeName}:`, error.message);
+    console.error(`   Stack:`, error.stack);
     return null;
   }
 }
 
-// Create a simple working route as fallback
-function createWorkingRoute(entityName) {
-  const router = express.Router();
-
-  router.get("/", async (req, res) => {
-    try {
-      await connectDB();
-
-      // Try to load the appropriate model
-      const modelPath = path.join(
-        __dirname,
-        "..",
-        "src",
-        "models",
-        `${entityName.charAt(0).toUpperCase() + entityName.slice(1, -1)}.js`
-      );
-      try {
-        const Model = require(modelPath);
-        const items = await Model.find({}).limit(10);
-
-        res.json({
-          success: true,
-          count: items.length,
-          data: items,
-          timestamp: new Date().toISOString(),
-        });
-      } catch (modelError) {
-        // Model not found, return placeholder
-        res.json({
-          success: true,
-          message: `${entityName} API is working!`,
-          count: 0,
-          data: [],
-          timestamp: new Date().toISOString(),
-          note: "Route loaded successfully, but using placeholder data",
-        });
-      }
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  });
-
-  router.get("/:id", async (req, res) => {
-    res.json({
-      success: true,
-      message: `Get ${entityName.slice(0, -1)} ${req.params.id}`,
-      data: { id: req.params.id, name: "Sample" },
-      timestamp: new Date().toISOString(),
-    });
-  });
-
-  router.post("/", (req, res) => {
-    res.status(201).json({
-      success: true,
-      message: `Created ${entityName.slice(0, -1)}`,
-      data: req.body,
-      timestamp: new Date().toISOString(),
-    });
-  });
-
-  return router;
-}
-
 // ============================================
-// LOAD AND MOUNT ALL ROUTES
+// MOUNT ALL ROUTES SIMPLY
 // ============================================
 
-// Define routes to load (remove .js extension)
-const routes = [
-  { file: "auth", mount: "/api/auth" },
-  { file: "clientRoutes", mount: "/api/clients" },
-  { file: "employeeRoutes", mount: "/api/employees" },
-  { file: "projectRoutes", mount: "/api/projects" },
-  { file: "departmentRoutes", mount: "/api/departments" },
-  { file: "positionRoutes", mount: "/api/positions" },
-  { file: "skillRoutes", mount: "/api/skills" },
-  { file: "serviceRoutes", mount: "/api/services" },
-  { file: "financeRoutes", mount: "/api/finance" },
+// List of routes to mount
+const routeMappings = [
+  { routeFile: "auth.js", apiPath: "/api/auth" },
+  { routeFile: "clientRoutes.js", apiPath: "/api/clients" },
+  { routeFile: "employeeRoutes.js", apiPath: "/api/employees" },
+  { routeFile: "projectRoutes.js", apiPath: "/api/projects" },
+  { routeFile: "departmentRoutes.js", apiPath: "/api/departments" },
+  { routeFile: "positionRoutes.js", apiPath: "/api/positions" },
+  { routeFile: "skillRoutes.js", apiPath: "/api/skills" },
+  { routeFile: "serviceRoutes.js", apiPath: "/api/services" },
+  { routeFile: "financeRoutes.js", apiPath: "/api/finance" },
 ];
 
-console.log("\n🔄 Loading and mounting routes...");
+// Mount each route
+routeMappings.forEach(({ routeFile, apiPath }) => {
+  const routeName = routeFile.replace(".js", "");
 
-// Load and mount each route
-routes.forEach(({ file, mount }) => {
-  console.log(`\n📌 Processing ${mount} (${file}.js)`);
+  console.log(`\n📌 Processing ${apiPath} from ${routeFile}`);
 
-  const router = loadRoute(file, mount);
+  const router = loadRouteDirect(routeName, apiPath);
 
-  if (router) {
-    app.use(mount, router);
-    console.log(`✅ SUCCESS: Mounted ${mount}`);
+  if (router && router.stack) {
+    // It's a valid Express router
+    app.use(apiPath, router);
+    console.log(`✅ MOUNTED: ${apiPath} with ${router.stack.length} handlers`);
 
-    // Log the routes
-    if (router.stack) {
+    // Log the routes for debugging
+    if (router.stack.length > 0) {
+      console.log(`   Routes:`);
       router.stack.forEach((layer, i) => {
         if (layer.route) {
           const methods = Object.keys(layer.route.methods)
             .map((m) => m.toUpperCase())
             .join(", ");
-          console.log(`   ${i + 1}. ${methods} ${layer.route.path}`);
+          console.log(`     ${i + 1}. ${methods} ${layer.route.path}`);
         }
       });
     }
   } else {
-    console.log(`⚠️ Using fallback for ${mount}`);
-    const entityName = mount.replace("/api/", "");
-    app.use(mount, createWorkingRoute(entityName));
-  }
-});
+    console.log(`⚠️ Could not load ${routeFile}, creating direct route`);
 
-// Try analytics if it exists
-try {
-  const analyticsPath = path.join(
-    __dirname,
-    "..",
-    "src",
-    "routes",
-    "analyticsRoutes.js"
-  );
-  const analyticsModule = require(analyticsPath);
+    // Create a direct working route
+    const directRouter = express.Router();
 
-  if (analyticsModule && analyticsModule.stack) {
-    app.use("/api/analytics", analyticsModule);
-    console.log("✅ Mounted /api/analytics");
-  }
-} catch (e) {
-  console.log("ℹ️ Analytics routes not found, skipping...");
-}
+    // GET all
+    directRouter.get("/", async (req, res) => {
+      try {
+        await connectDB();
 
-// ============================================
-// DEBUG ENDPOINTS
-// ============================================
+        // Extract model name from route (e.g., "departments" -> "Department")
+        const entityName = apiPath.replace("/api/", "");
+        const modelName =
+          entityName.charAt(0).toUpperCase() + entityName.slice(1, -1);
 
-// Debug endpoint to check file structure
-app.get("/api/debug/structure", (req, res) => {
-  const fs = require("fs");
+        try {
+          // Load the model
+          const modelPath = path.join(
+            __dirname,
+            "..",
+            "src",
+            "models",
+            `${modelName}.js`
+          );
+          if (fs.existsSync(modelPath)) {
+            const Model = require(modelPath);
+            const items = await Model.find({}).limit(50);
 
-  const checkPath = (p) => {
-    try {
-      if (fs.existsSync(p)) {
-        const isDir = fs.statSync(p).isDirectory();
-        return {
-          path: p,
-          exists: true,
-          type: isDir ? "directory" : "file",
-          items: isDir ? fs.readdirSync(p) : null,
-        };
+            res.json({
+              success: true,
+              count: items.length,
+              data: items,
+              timestamp: new Date().toISOString(),
+              note: "Loaded from database directly",
+            });
+          } else {
+            throw new Error(`Model ${modelName} not found`);
+          }
+        } catch (modelError) {
+          // Model not found or error
+          res.json({
+            success: true,
+            message: `${entityName} API`,
+            count: 0,
+            data: [],
+            timestamp: new Date().toISOString(),
+            note: "Route loaded but model not found",
+            debug: {
+              apiPath,
+              modelName,
+              modelError: modelError.message,
+            },
+          });
+        }
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString(),
+        });
       }
-      return { path: p, exists: false };
-    } catch (error) {
-      return { path: p, exists: false, error: error.message };
-    }
-  };
+    });
 
-  res.json({
-    success: true,
-    structure: {
-      apiDir: checkPath(__dirname),
-      projectRoot: checkPath(path.join(__dirname, "..")),
-      srcDir: checkPath(path.join(__dirname, "..", "src")),
-      routesDir: checkPath(path.join(__dirname, "..", "src", "routes")),
-      modelsDir: checkPath(path.join(__dirname, "..", "src", "models")),
-      employeeRoutes: checkPath(
-        path.join(__dirname, "..", "src", "routes", "employeeRoutes.js")
-      ),
-      employeeModel: checkPath(
-        path.join(__dirname, "..", "src", "models", "Employee.js")
-      ),
-    },
-    timestamp: new Date().toISOString(),
-  });
+    // GET by ID
+    directRouter.get("/:id", async (req, res) => {
+      try {
+        await connectDB();
+
+        const entityName = apiPath.replace("/api/", "");
+        const modelName =
+          entityName.charAt(0).toUpperCase() + entityName.slice(1, -1);
+
+        try {
+          const modelPath = path.join(
+            __dirname,
+            "..",
+            "src",
+            "models",
+            `${modelName}.js`
+          );
+          if (fs.existsSync(modelPath)) {
+            const Model = require(modelPath);
+            const item = await Model.findById(req.params.id);
+
+            if (!item) {
+              return res.status(404).json({
+                success: false,
+                error: `${modelName} not found`,
+                timestamp: new Date().toISOString(),
+              });
+            }
+
+            res.json({
+              success: true,
+              data: item,
+              timestamp: new Date().toISOString(),
+            });
+          } else {
+            throw new Error(`Model ${modelName} not found`);
+          }
+        } catch (modelError) {
+          res.json({
+            success: true,
+            message: `Get ${entityName.slice(0, -1)} ${req.params.id}`,
+            data: { id: req.params.id, name: "Sample" },
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    app.use(apiPath, directRouter);
+    console.log(`✅ CREATED: Direct route for ${apiPath}`);
+  }
 });
 
-// Test endpoint
-app.get("/api/test", (req, res) => {
-  res.json({
-    success: true,
-    message: "API is working!",
-    timestamp: new Date().toISOString(),
-    paths: {
-      apiDir: __dirname,
-      projectRoot: path.join(__dirname, ".."),
-      routesDir: path.join(__dirname, "..", "src", "routes"),
-    },
-  });
-});
+// ============================================
+// TEST ENDPOINTS
+// ============================================
 
-// Direct employee test (bypasses routes)
-app.get("/api/employees-direct", async (req, res) => {
+// Test database connection
+app.get("/api/test-db", async (req, res) => {
   try {
     await connectDB();
 
-    // Try to load Employee model directly
+    // Try to list all collections
+    const collections = await mongoose.connection.db
+      .listCollections()
+      .toArray();
+
+    res.json({
+      success: true,
+      message: "Database connected successfully",
+      collections: collections.map((c) => c.name),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Test specific model
+app.get("/api/test-models", async (req, res) => {
+  try {
+    await connectDB();
+
+    const modelsDir = path.join(__dirname, "..", "src", "models");
+    const models = [];
+
+    if (fs.existsSync(modelsDir)) {
+      const files = fs.readdirSync(modelsDir);
+
+      for (const file of files) {
+        if (file.endsWith(".js")) {
+          const modelName = file.replace(".js", "");
+          const modelPath = path.join(modelsDir, file);
+
+          try {
+            const Model = require(modelPath);
+            const count = await Model.countDocuments();
+
+            models.push({
+              name: modelName,
+              path: modelPath,
+              count: count,
+              loaded: true,
+            });
+          } catch (e) {
+            models.push({
+              name: modelName,
+              path: modelPath,
+              error: e.message,
+              loaded: false,
+            });
+          }
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      modelsDir: modelsDir,
+      exists: fs.existsSync(modelsDir),
+      models: models,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Test routes loading
+app.get("/api/test-routes", (req, res) => {
+  const routesInfo = [];
+
+  app._router.stack.forEach((middleware, i) => {
+    if (middleware.name === "router") {
+      routesInfo.push({
+        index: i,
+        name: middleware.name,
+        regexp: middleware.regexp.toString(),
+        handle: middleware.handle
+          ? {
+              stackLength: middleware.handle.stack.length,
+              routes: middleware.handle.stack
+                .map((layer, j) => {
+                  if (layer.route) {
+                    return {
+                      path: layer.route.path,
+                      methods: Object.keys(layer.route.methods),
+                    };
+                  }
+                  return null;
+                })
+                .filter(Boolean),
+            }
+          : null,
+      });
+    }
+  });
+
+  res.json({
+    success: true,
+    totalMiddleware: app._router.stack.length,
+    routers: routesInfo,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Direct employee endpoint (for testing)
+app.get("/api/employees-raw", async (req, res) => {
+  try {
+    await connectDB();
+
+    // Direct model loading
     const employeeModelPath = path.join(
       __dirname,
       "..",
@@ -375,16 +466,66 @@ app.get("/api/employees-direct", async (req, res) => {
       "models",
       "Employee.js"
     );
-    console.log("Loading Employee model from:", employeeModelPath);
+
+    if (!fs.existsSync(employeeModelPath)) {
+      return res.status(404).json({
+        success: false,
+        error: `Employee model not found at ${employeeModelPath}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     const Employee = require(employeeModelPath);
-    const employees = await Employee.find({}).limit(5);
+    const employees = await Employee.find({}).limit(20);
 
     res.json({
       success: true,
       count: employees.length,
       data: employees,
       timestamp: new Date().toISOString(),
+      note: "Loaded directly from Employee model",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
+  }
+});
+
+// Direct department endpoint (for testing)
+app.get("/api/departments-raw", async (req, res) => {
+  try {
+    await connectDB();
+
+    // Direct model loading
+    const departmentModelPath = path.join(
+      __dirname,
+      "..",
+      "src",
+      "models",
+      "Department.js"
+    );
+
+    if (!fs.existsSync(departmentModelPath)) {
+      return res.status(404).json({
+        success: false,
+        error: `Department model not found at ${departmentModelPath}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const Department = require(departmentModelPath);
+    const departments = await Department.find({}).limit(20);
+
+    res.json({
+      success: true,
+      count: departments.length,
+      data: departments,
+      timestamp: new Date().toISOString(),
+      note: "Loaded directly from Department model",
     });
   } catch (error) {
     res.status(500).json({
@@ -433,9 +574,11 @@ app.use((req, res) => {
     availableRoutes: [
       "/",
       "/health",
-      "/api/test",
-      "/api/debug/structure",
-      "/api/employees-direct",
+      "/api/test-db",
+      "/api/test-models",
+      "/api/test-routes",
+      "/api/employees-raw",
+      "/api/departments-raw",
       "/api/auth/*",
       "/api/clients/*",
       "/api/employees/*",
