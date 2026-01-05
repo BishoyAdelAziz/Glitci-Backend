@@ -1,4 +1,4 @@
-// api/index.js - UPDATED FOR YOUR STRUCTURE
+// api/index.js - FIXED VERSION
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -6,7 +6,6 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 const path = require("path");
-require("dotenv").config();
 
 const app = express();
 
@@ -99,6 +98,7 @@ app.get("/health", async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    console.error("Database connection error:", error.message);
     res.status(500).json({
       success: false,
       status: "unhealthy",
@@ -109,24 +109,21 @@ app.get("/health", async (req, res) => {
   }
 });
 
-// 🔴 FIXED: Correct route imports from src/routes
+// 🔴 FIXED: Simplified route loading without problematic placeholder
 // Load routes with error handling
 const loadRoute = (routePath, routeName) => {
   try {
+    // Try to load the route file
     const route = require(routePath);
+    console.log(`✓ Loaded ${routeName} routes from ${routePath}`);
     return route;
   } catch (error) {
-    console.warn(`Warning: ${routeName} route not found at ${routePath}`);
-    // Return a placeholder router
-    const router = express.Router();
-    router.all("*", (req, res) => {
-      res.status(501).json({
-        success: false,
-        message: `${routeName} routes not implemented yet`,
-        path: req.path,
-      });
-    });
-    return router;
+    console.warn(
+      `⚠️ ${routeName} routes not found at ${routePath}:`,
+      error.message
+    );
+    // Return a simple placeholder that doesn't break
+    return express.Router();
   }
 };
 
@@ -150,16 +147,28 @@ app.use("/api/skills", loadRoute("../src/routes/skillRoutes", "skills"));
 app.use("/api/services", loadRoute("../src/routes/serviceRoutes", "services"));
 app.use("/api/finance", loadRoute("../src/routes/financeRoutes", "finance"));
 
-// Optional analytics route
+// Try to load analytics if it exists
 try {
   app.use("/api/analytics", require("../src/routes/analyticsRoutes"));
+  console.log("✓ Loaded analytics routes");
 } catch (e) {
-  console.log("Analytics routes not found, skipping...");
+  console.log("ℹ️ Analytics routes not found, skipping...");
 }
 
 // Error handler
-const errorHandler = require("../src/middleware/errorHandler");
-app.use(errorHandler);
+app.use((err, req, res, next) => {
+  console.error("Error:", err.message);
+  console.error("Stack:", err.stack);
+
+  const statusCode = err.statusCode || 500;
+  const message = err.message || "Internal server error";
+
+  res.status(statusCode).json({
+    success: false,
+    error: message,
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+  });
+});
 
 // 404 handler - must be last
 app.use((req, res) => {
@@ -182,4 +191,5 @@ app.use((req, res) => {
   });
 });
 
+// Export the app
 module.exports = app;
