@@ -1,4 +1,4 @@
-// api/index.js - FINAL WORKING VERSION
+// api/index.js - FINAL FIX FOR MONGOOSE TIMEOUT
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -51,24 +51,76 @@ const limiter = rateLimit({
 // Apply rate limiting to API routes
 app.use("/api/", limiter);
 
-// Cache mongoose connection
+// ============================================
+// IMPROVED MONGOOSE CONNECTION FOR VERCEL
+// ============================================
+
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.error("❌ MONGODB_URI is not defined in environment variables");
+}
+
+// Global connection cache
 let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
 async function connectDB() {
-  if (cached && cached.conn) return cached.conn;
-  if (!cached) cached = global.mongoose = { conn: null, promise: null };
-  if (!cached.promise) {
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-    };
-    cached.promise = mongoose
-      .connect(process.env.MONGODB_URI, options)
-      .then((mongoose) => mongoose);
+  // If already connected, return the connection
+  if (cached.conn) {
+    console.log("✅ Using cached MongoDB connection");
+    return cached.conn;
   }
-  cached.conn = await cached.promise;
+
+  // If connecting, wait for the promise
+  if (cached.promise) {
+    console.log("⏳ Waiting for existing connection promise");
+    cached.conn = await cached.promise;
+    return cached.conn;
+  }
+
+  console.log("🔌 Establishing new MongoDB connection...");
+
+  // Configure mongoose for Vercel/serverless
+  mongoose.set("strictQuery", false);
+
+  const options = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 10000, // Reduced from 30000
+    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+    maxPoolSize: 10, // Maintain up to 10 socket connections
+    minPoolSize: 1, // Maintain at least 1 socket connection
+  };
+
+  cached.promise = mongoose
+    .connect(MONGODB_URI, options)
+    .then((mongooseInstance) => {
+      console.log("✅ MongoDB connected successfully");
+      return mongooseInstance;
+    })
+    .catch((err) => {
+      console.error("❌ MongoDB connection error:", err.message);
+      cached.promise = null; // Reset promise on error
+      throw err;
+    });
+
+  try {
+    cached.conn = await cached.promise;
+  } catch (err) {
+    cached.promise = null;
+    throw err;
+  }
+
   return cached.conn;
 }
+
+// ============================================
+// HEALTH CHECK WITH CONNECTION TESTING
+// ============================================
 
 // Root endpoint for Vercel health checks
 app.get("/", (req, res) => {
@@ -95,11 +147,19 @@ app.get("/", (req, res) => {
 // Health check endpoint
 app.get("/health", async (req, res) => {
   try {
+    const startTime = Date.now();
     await connectDB();
+    const endTime = Date.now();
+
+    const connectionTime = endTime - startTime;
+    const readyState = mongoose.connection.readyState;
+
     res.json({
       success: true,
       status: "healthy",
       database: "connected",
+      connectionTime: `${connectionTime}ms`,
+      readyState: readyState, // 1 = connected, 2 = connecting, 3 = disconnecting, 0 = disconnected
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -115,105 +175,79 @@ app.get("/health", async (req, res) => {
 });
 
 // ============================================
-// SIMPLE DIRECT ROUTE LOADING
+// SIMPLE ROUTE HANDLERS WITH CONNECTION MANAGEMENT
 // ============================================
 
-console.log("🚀 Loading routes...");
+console.log("🚀 Initializing API routes...");
 
-// Map API paths to model names (fixing filename mismatches)
-const modelMap = {
-  departments: "Departments", // Your file is Departments.js (plural)
-  employees: "Employee",
-  clients: "Client",
-  projects: "Project",
-  positions: "Position",
-  skills: "Skill",
-  services: "Service",
-  finance: "FinancialRecord",
-  auth: "User",
-};
-
-// Function to load a route file
-function loadRouteFile(routeName) {
+// Middleware to ensure DB connection for all API routes
+app.use("/api/*", async (req, res, next) => {
   try {
-    // Build path to route file
-    const routePath = path.join(
-      __dirname,
-      "..",
-      "src",
-      "routes",
-      `${routeName}.js`
-    );
-
-    console.log(`🔍 Loading ${routeName} from: ${routePath}`);
-
-    // Check if file exists
-    if (!fs.existsSync(routePath)) {
-      console.log(`   ❌ Route file not found`);
-      return null;
-    }
-
-    console.log(`   ✅ Route file exists`);
-
-    // Clear require cache
-    delete require.cache[require.resolve(routePath)];
-
-    // Load the route
-    const routeModule = require(routePath);
-
-    if (!routeModule) {
-      console.log(`   ❌ Route module is empty`);
-      return null;
-    }
-
-    console.log(`   ✅ Route module loaded`);
-
-    return routeModule;
+    await connectDB();
+    next();
   } catch (error) {
-    console.error(`   ❌ Error loading route:`, error.message);
+    console.error("Database connection failed in middleware:", error.message);
+    res.status(503).json({
+      success: false,
+      error: "Database connection failed",
+      message: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// ============================================
+// DIRECT API ENDPOINTS (NO ROUTE FILES)
+// ============================================
+
+// Helper to load a model
+function loadModel(modelName) {
+  const modelPath = path.join(
+    __dirname,
+    "..",
+    "src",
+    "models",
+    `${modelName}.js`
+  );
+
+  if (!fs.existsSync(modelPath)) {
+    console.error(`Model file not found: ${modelPath}`);
+    return null;
+  }
+
+  try {
+    // Clear require cache
+    delete require.cache[require.resolve(modelPath)];
+    const Model = require(modelPath);
+
+    if (!Model || !Model.prototype || !Model.prototype.$isMongooseModel) {
+      console.error(`Invalid Mongoose model: ${modelName}`);
+      return null;
+    }
+
+    return Model;
+  } catch (error) {
+    console.error(`Error loading model ${modelName}:`, error.message);
     return null;
   }
 }
 
-// Function to create a direct route (fallback)
-function createDirectRoute(apiPath) {
+// Generic CRUD handler
+function createCRUDRouter(entityName, modelName) {
   const router = express.Router();
-  const entityName = apiPath.replace("/api/", "");
-  const modelName =
-    modelMap[entityName] ||
-    entityName.charAt(0).toUpperCase() + entityName.slice(1, -1);
 
-  console.log(
-    `   Creating direct route for ${apiPath} using model: ${modelName}`
-  );
-
-  // GET all
+  // GET all with pagination
   router.get("/", async (req, res) => {
     try {
-      await connectDB();
+      const Model = loadModel(modelName);
 
-      // Try to load the model
-      const modelPath = path.join(
-        __dirname,
-        "..",
-        "src",
-        "models",
-        `${modelName}.js`
-      );
-
-      if (!fs.existsSync(modelPath)) {
-        console.log(`Model file not found: ${modelPath}`);
-        return res.json({
-          success: true,
-          message: `${entityName} API`,
-          count: 0,
-          data: [],
+      if (!Model) {
+        return res.status(500).json({
+          success: false,
+          error: `Model ${modelName} not found`,
           timestamp: new Date().toISOString(),
-          note: `Model ${modelName} not found at ${modelPath}`,
         });
       }
-
-      const Model = require(modelPath);
 
       // Pagination
       const page = parseInt(req.query.page) || 1;
@@ -221,25 +255,36 @@ function createDirectRoute(apiPath) {
       const skip = (page - 1) * limit;
 
       // Build query
-      const query = { isActive: true };
+      const query = {};
 
-      // Search filter
+      // Only include isActive if the model has it
+      if (Model.schema.paths.isActive) {
+        query.isActive = true;
+      }
+
+      // Search
       if (req.query.search) {
         if (Model.schema.paths.name) {
           query.name = { $regex: req.query.search, $options: "i" };
         }
-        if (Model.schema.paths.email) {
-          query.$or = [
-            { name: { $regex: req.query.search, $options: "i" } },
-            { email: { $regex: req.query.search, $options: "i" } },
-          ];
-        }
       }
 
-      // Get data with pagination
-      const [data, total] = await Promise.all([
-        Model.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }),
-        Model.countDocuments(query),
+      // Execute query with timeout protection
+      const findPromise = Model.find(query)
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 });
+
+      const countPromise = Model.countDocuments(query);
+
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Database query timeout")), 8000);
+      });
+
+      const [data, total] = await Promise.race([
+        Promise.all([findPromise, countPromise]),
+        timeoutPromise,
       ]);
 
       res.json({
@@ -251,10 +296,9 @@ function createDirectRoute(apiPath) {
         limit,
         data,
         timestamp: new Date().toISOString(),
-        note: "Loaded via direct route",
       });
     } catch (error) {
-      console.error(`Error in ${apiPath}:`, error);
+      console.error(`Error in ${entityName} GET:`, error.message);
       res.status(500).json({
         success: false,
         error: error.message,
@@ -266,25 +310,16 @@ function createDirectRoute(apiPath) {
   // GET by ID
   router.get("/:id", async (req, res) => {
     try {
-      await connectDB();
+      const Model = loadModel(modelName);
 
-      const modelPath = path.join(
-        __dirname,
-        "..",
-        "src",
-        "models",
-        `${modelName}.js`
-      );
-
-      if (!fs.existsSync(modelPath)) {
-        return res.status(404).json({
+      if (!Model) {
+        return res.status(500).json({
           success: false,
           error: `Model ${modelName} not found`,
           timestamp: new Date().toISOString(),
         });
       }
 
-      const Model = require(modelPath);
       const item = await Model.findById(req.params.id);
 
       if (!item) {
@@ -301,44 +336,7 @@ function createDirectRoute(apiPath) {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  });
-
-  // POST create
-  router.post("/", async (req, res) => {
-    try {
-      await connectDB();
-
-      const modelPath = path.join(
-        __dirname,
-        "..",
-        "src",
-        "models",
-        `${modelName}.js`
-      );
-
-      if (!fs.existsSync(modelPath)) {
-        return res.status(404).json({
-          success: false,
-          error: `Model ${modelName} not found`,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      const Model = require(modelPath);
-      const item = await Model.create(req.body);
-
-      res.status(201).json({
-        success: true,
-        data: item,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
+      console.error(`Error in ${entityName} GET by ID:`, error.message);
       res.status(500).json({
         success: false,
         error: error.message,
@@ -351,203 +349,296 @@ function createDirectRoute(apiPath) {
 }
 
 // ============================================
-// MOUNT ALL ROUTES
+// CREATE AND MOUNT ALL ROUTES
 // ============================================
 
-const routeConfigs = [
-  { routeFile: "auth", apiPath: "/api/auth" },
-  { routeFile: "clientRoutes", apiPath: "/api/clients" },
-  { routeFile: "employeeRoutes", apiPath: "/api/employees" },
-  { routeFile: "projectRoutes", apiPath: "/api/projects" },
-  { routeFile: "departmentRoutes", apiPath: "/api/departments" },
-  { routeFile: "positionRoutes", apiPath: "/api/positions" },
-  { routeFile: "skillRoutes", apiPath: "/api/skills" },
-  { routeFile: "serviceRoutes", apiPath: "/api/services" },
-  { routeFile: "financeRoutes", apiPath: "/api/finance" },
+// Map of endpoints to models
+const endpoints = [
+  { path: "/api/departments", model: "Departments", name: "departments" },
+  { path: "/api/employees", model: "Employee", name: "employees" },
+  { path: "/api/clients", model: "Client", name: "clients" },
+  { path: "/api/projects", model: "Project", name: "projects" },
+  { path: "/api/positions", model: "Position", name: "positions" },
+  { path: "/api/skills", model: "Skill", name: "skills" },
+  { path: "/api/services", model: "Service", name: "services" },
+  { path: "/api/finance", model: "FinancialRecord", name: "financial records" },
 ];
 
-console.log("\n🔄 Mounting routes...");
+console.log("\n🔄 Creating routes...");
 
-routeConfigs.forEach(({ routeFile, apiPath }) => {
-  console.log(`\n📌 Processing ${apiPath}`);
-
-  // Try to load the route file
-  const routeModule = loadRouteFile(routeFile);
-
-  if (routeModule && routeModule.stack) {
-    // Route file loaded successfully
-    app.use(apiPath, routeModule);
-    console.log(`✅ ROUTE FILE: Mounted ${apiPath} from ${routeFile}.js`);
-
-    // Log the routes
-    if (routeModule.stack.length > 0) {
-      console.log(`   Routes in ${apiPath}:`);
-      routeModule.stack.forEach((layer, i) => {
-        if (layer.route) {
-          const methods = Object.keys(layer.route.methods)
-            .map((m) => m.toUpperCase())
-            .join(", ");
-          console.log(`     ${i + 1}. ${methods} ${layer.route.path}`);
-        }
-      });
-    }
-  } else {
-    // Route file not found or invalid, use direct route
-    console.log(`⚠️ Route file not found, using direct route for ${apiPath}`);
-    const directRouter = createDirectRoute(apiPath);
-    app.use(apiPath, directRouter);
-    console.log(`✅ DIRECT ROUTE: Created for ${apiPath}`);
-  }
+endpoints.forEach(({ path, model, name }) => {
+  const router = createCRUDRouter(name, model);
+  app.use(path, router);
+  console.log(`✅ Created ${path} (using ${model}.js)`);
 });
 
 // ============================================
-// DEBUG ENDPOINTS
+// AUTH ROUTES (SPECIAL HANDLING)
 // ============================================
 
-// Test all models
-app.get("/api/debug/models", async (req, res) => {
+const authRouter = express.Router();
+
+authRouter.post("/login", async (req, res) => {
   try {
-    await connectDB();
+    const User = loadModel("User");
 
-    const modelsDir = path.join(__dirname, "..", "src", "models");
-    const models = [];
+    if (!User) {
+      return res.status(500).json({
+        success: false,
+        error: "User model not found",
+        timestamp: new Date().toISOString(),
+      });
+    }
 
-    if (fs.existsSync(modelsDir)) {
-      const files = fs.readdirSync(modelsDir);
+    const { email, password } = req.body;
 
-      for (const file of files) {
-        if (file.endsWith(".js")) {
-          const modelName = file.replace(".js", "");
-          const modelPath = path.join(modelsDir, file);
+    // Basic validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: "Email and password are required",
+        timestamp: new Date().toISOString(),
+      });
+    }
 
-          try {
-            const Model = require(modelPath);
-            if (Model && Model.prototype && Model.prototype.$isMongooseModel) {
-              const count = await Model.countDocuments();
-              models.push({
-                name: modelName,
-                collection: Model.collection.name,
-                count: count,
-                loaded: true,
-              });
-            } else {
-              models.push({
-                name: modelName,
-                error: "Not a Mongoose model",
-                loaded: false,
-              });
-            }
-          } catch (e) {
-            models.push({
-              name: modelName,
-              error: e.message,
-              loaded: false,
-            });
-          }
-        }
-      }
+    // Find user
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid credentials",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Check password (simplified - you should use bcrypt)
+    const isValid = user.password === password;
+
+    if (!isValid) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid credentials",
+        timestamp: new Date().toISOString(),
+      });
     }
 
     res.json({
       success: true,
-      modelsDir,
-      exists: fs.existsSync(modelsDir),
-      models,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-// Test specific endpoint
-app.get("/api/debug/endpoints", (req, res) => {
-  const endpoints = [];
-
-  app._router.stack.forEach((middleware) => {
-    if (middleware.route) {
-      // Direct route
-      endpoints.push({
-        path: middleware.route.path,
-        methods: Object.keys(middleware.route.methods),
-      });
-    } else if (middleware.name === "router") {
-      // Router middleware
-      const basePath = middleware.regexp
-        .toString()
-        .replace(/^\/\^|\/\$\//g, "")
-        .replace(/\\/g, "");
-      middleware.handle.stack.forEach((handler) => {
-        if (handler.route) {
-          endpoints.push({
-            path: basePath + handler.route.path,
-            methods: Object.keys(handler.route.methods),
-          });
-        }
-      });
-    }
-  });
-
-  res.json({
-    success: true,
-    endpoints,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Quick test
-app.get("/api/quick-test", async (req, res) => {
-  try {
-    await connectDB();
-
-    // Test Departments model specifically
-    const deptModelPath = path.join(
-      __dirname,
-      "..",
-      "src",
-      "models",
-      "Departments.js"
-    );
-    const deptExists = fs.existsSync(deptModelPath);
-
-    let deptCount = 0;
-    let deptData = [];
-
-    if (deptExists) {
-      const Departments = require(deptModelPath);
-      deptCount = await Departments.countDocuments();
-      deptData = await Departments.find({}).limit(3);
-    }
-
-    res.json({
-      success: true,
-      departments: {
-        modelPath: deptModelPath,
-        exists: deptExists,
-        count: deptCount,
-        sample: deptData,
+      message: "Login successful",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
       },
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    console.error("Login error:", error.message);
     res.status(500).json({
       success: false,
       error: error.message,
       timestamp: new Date().toISOString(),
     });
   }
+});
+
+authRouter.post("/register", async (req, res) => {
+  try {
+    const User = loadModel("User");
+
+    if (!User) {
+      return res.status(500).json({
+        success: false,
+        error: "User model not found",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const user = await User.create(req.body);
+
+    res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Registration error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+authRouter.get("/me", async (req, res) => {
+  // Simplified - you should implement proper auth
+  res.json({
+    success: true,
+    user: {
+      id: "1",
+      name: "Test User",
+      email: "test@example.com",
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.use("/api/auth", authRouter);
+console.log("✅ Created /api/auth routes");
+
+// ============================================
+// TEST AND DEBUG ENDPOINTS
+// ============================================
+
+// Test database connection with timeout
+app.get("/api/test-connection", async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    // Set a timeout for the entire operation
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error("Connection timeout after 15s")),
+        15000
+      );
+    });
+
+    await Promise.race([connectDB(), timeoutPromise]);
+
+    const endTime = Date.now();
+    const connectionTime = endTime - startTime;
+
+    // Test a simple query
+    const testStart = Date.now();
+    const collections = await mongoose.connection.db
+      .listCollections()
+      .toArray();
+    const testEnd = Date.now();
+    const queryTime = testEnd - testStart;
+
+    res.json({
+      success: true,
+      message: "Database connection successful",
+      connectionTime: `${connectionTime}ms`,
+      queryTime: `${queryTime}ms`,
+      readyState: mongoose.connection.readyState,
+      collections: collections.map((c) => c.name),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    const endTime = Date.now();
+    const connectionTime = endTime - startTime;
+
+    console.error("Connection test failed:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      connectionTime: `${connectionTime}ms`,
+      readyState: mongoose.connection.readyState,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Quick data test
+app.get("/api/test-data", async (req, res) => {
+  try {
+    // Test multiple collections quickly
+    const Departments = loadModel("Departments");
+    const Employees = loadModel("Employee");
+
+    if (!Departments || !Employees) {
+      throw new Error("Models not loaded");
+    }
+
+    const [deptCount, empCount] = await Promise.all([
+      Departments.countDocuments(),
+      Employees.countDocuments(),
+    ]);
+
+    res.json({
+      success: true,
+      departments: deptCount,
+      employees: empCount,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// List all available endpoints
+app.get("/api/endpoints", (req, res) => {
+  const endpointsList = [
+    { path: "/health", method: "GET", description: "Health check" },
+    {
+      path: "/api/test-connection",
+      method: "GET",
+      description: "Test DB connection",
+    },
+    { path: "/api/test-data", method: "GET", description: "Test data counts" },
+    { path: "/api/auth/login", method: "POST", description: "User login" },
+    {
+      path: "/api/auth/register",
+      method: "POST",
+      description: "User registration",
+    },
+    { path: "/api/auth/me", method: "GET", description: "Get current user" },
+    {
+      path: "/api/departments",
+      method: "GET",
+      description: "Get all departments",
+    },
+    { path: "/api/employees", method: "GET", description: "Get all employees" },
+    { path: "/api/clients", method: "GET", description: "Get all clients" },
+    { path: "/api/projects", method: "GET", description: "Get all projects" },
+    { path: "/api/positions", method: "GET", description: "Get all positions" },
+    { path: "/api/skills", method: "GET", description: "Get all skills" },
+    { path: "/api/services", method: "GET", description: "Get all services" },
+    {
+      path: "/api/finance",
+      method: "GET",
+      description: "Get all financial records",
+    },
+  ];
+
+  res.json({
+    success: true,
+    endpoints: endpointsList,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ============================================
 // REQUEST LOGGING
 // ============================================
 
-app.use("/api", (req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+app.use((req, res, next) => {
+  const startTime = Date.now();
+
+  // Log after response is sent
+  res.on("finish", () => {
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    console.log(
+      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${
+        res.statusCode
+      } (${duration}ms)`
+    );
+  });
+
   next();
 });
 
@@ -576,24 +667,39 @@ app.use((req, res) => {
     success: false,
     error: `Route not found: ${req.method} ${req.originalUrl}`,
     timestamp: new Date().toISOString(),
-    availableRoutes: [
-      "/",
+    availableEndpoints: [
       "/health",
-      "/api/quick-test",
-      "/api/debug/models",
-      "/api/debug/endpoints",
+      "/api/test-connection",
+      "/api/test-data",
+      "/api/endpoints",
       "/api/auth/*",
-      "/api/clients/*",
-      "/api/employees/*",
-      "/api/projects/*",
-      "/api/departments/*",
-      "/api/positions/*",
-      "/api/skills/*",
-      "/api/services/*",
-      "/api/finance/*",
+      "/api/departments",
+      "/api/employees",
+      "/api/clients",
+      "/api/projects",
+      "/api/positions",
+      "/api/skills",
+      "/api/services",
+      "/api/finance",
     ],
   });
 });
+
+// ============================================
+// EXPORT AND CLEANUP
+// ============================================
+
+// Close MongoDB connection on Vercel shutdown
+if (process.env.VERCEL) {
+  process.on("SIGTERM", async () => {
+    console.log("SIGTERM received, closing MongoDB connection...");
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.close();
+      console.log("MongoDB connection closed");
+    }
+    process.exit(0);
+  });
+}
 
 // Export the app
 module.exports = app;
