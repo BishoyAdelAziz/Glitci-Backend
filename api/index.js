@@ -1,4 +1,4 @@
-// api/index.js - FINAL WORKING VERSION
+// api/index.js - ULTRA SIMPLE WORKING VERSION
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -10,7 +10,7 @@ const fs = require("fs");
 
 const app = express();
 
-// 🔴 CRITICAL FIX: Trust proxy for Vercel
+// Trust proxy for Vercel
 app.set("trust proxy", 1);
 
 // Security + parsing
@@ -20,7 +20,7 @@ app.use(
   })
 );
 
-// CORS - allow your frontend
+// CORS
 app.use(
   cors({
     origin: [
@@ -36,7 +36,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Rate limiting - FIXED for Vercel
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -48,79 +48,42 @@ const limiter = rateLimit({
   },
 });
 
-// Apply rate limiting to API routes
 app.use("/api/", limiter);
 
 // ============================================
-// IMPROVED MONGOOSE CONNECTION FOR VERCEL
+// SIMPLE MONGOOSE CONNECTION
 // ============================================
 
 const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  console.error("❌ MONGODB_URI is not defined in environment variables");
-}
-
-// Global connection cache
-let cached = global.mongoose;
-
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
-}
+let isConnected = false;
 
 async function connectDB() {
-  // If already connected, return the connection
-  if (cached.conn) {
-    return cached.conn;
+  if (isConnected) {
+    return mongoose.connection;
   }
-
-  // If connecting, wait for the promise
-  if (cached.promise) {
-    cached.conn = await cached.promise;
-    return cached.conn;
-  }
-
-  console.log("🔌 Establishing MongoDB connection...");
-
-  // Configure mongoose for Vercel/serverless
-  mongoose.set("strictQuery", false);
-
-  const options = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 10000,
-    socketTimeoutMS: 45000,
-    maxPoolSize: 10,
-    minPoolSize: 1,
-  };
-
-  cached.promise = mongoose
-    .connect(MONGODB_URI, options)
-    .then((mongooseInstance) => {
-      console.log("✅ MongoDB connected successfully");
-      return mongooseInstance;
-    })
-    .catch((err) => {
-      console.error("❌ MongoDB connection error:", err.message);
-      cached.promise = null;
-      throw err;
-    });
 
   try {
-    cached.conn = await cached.promise;
-  } catch (err) {
-    cached.promise = null;
-    throw err;
-  }
+    const options = {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+    };
 
-  return cached.conn;
+    await mongoose.connect(MONGODB_URI, options);
+    isConnected = true;
+    console.log("✅ MongoDB connected");
+    return mongoose.connection;
+  } catch (error) {
+    console.error("❌ MongoDB connection error:", error.message);
+    throw error;
+  }
 }
 
 // ============================================
-// HEALTH CHECK ENDPOINTS
+// BASIC ENDPOINTS
 // ============================================
 
-// Root endpoint for Vercel health checks
+// Root endpoint
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -129,7 +92,7 @@ app.get("/", (req, res) => {
     timestamp: new Date().toISOString(),
     endpoints: [
       "/health",
-      "/api/test-connection",
+      "/api/test",
       "/api/departments",
       "/api/employees",
       "/api/positions",
@@ -137,31 +100,21 @@ app.get("/", (req, res) => {
       "/api/services",
       "/api/projects",
       "/api/clients",
-      "/api/finance",
     ],
   });
 });
 
-// Health check endpoint
+// Health check
 app.get("/health", async (req, res) => {
   try {
-    const startTime = Date.now();
     await connectDB();
-    const endTime = Date.now();
-
-    const connectionTime = endTime - startTime;
-    const readyState = mongoose.connection.readyState;
-
     res.json({
       success: true,
       status: "healthy",
       database: "connected",
-      connectionTime: `${connectionTime}ms`,
-      readyState: readyState,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Database connection error:", error.message);
     res.status(500).json({
       success: false,
       status: "unhealthy",
@@ -173,208 +126,395 @@ app.get("/health", async (req, res) => {
 });
 
 // ============================================
-// DB CONNECTION MIDDLEWARE (FIXED)
+// SIMPLE DIRECT ENDPOINTS
 // ============================================
 
-// FIX: Use regex pattern instead of wildcard
-app.use(/^\/api\//, async (req, res, next) => {
+console.log("🚀 Setting up simple endpoints...");
+
+// Test endpoint
+app.get("/api/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "API is working!",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Departments - Direct MongoDB access
+app.get("/api/departments", async (req, res) => {
   try {
-    await connectDB();
-    next();
+    const db = await connectDB();
+
+    // Direct MongoDB collection access (no model needed)
+    const departments = await db
+      .collection("departments")
+      .find({ isActive: true })
+      .sort({ name: 1 })
+      .limit(100)
+      .toArray();
+
+    res.json({
+      success: true,
+      count: departments.length,
+      data: departments,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
-    console.error("Database connection failed:", error.message);
-    res.status(503).json({
+    console.error("Departments error:", error.message);
+    res.status(500).json({
       success: false,
-      error: "Database connection failed",
-      message: error.message,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Employees - Direct MongoDB access
+app.get("/api/employees", async (req, res) => {
+  try {
+    const db = await connectDB();
+
+    // Get employees with department names
+    const employees = await db
+      .collection("employees")
+      .aggregate([
+        { $match: { isActive: true } },
+        { $sort: { name: 1 } },
+        { $limit: 100 },
+        {
+          $lookup: {
+            from: "departments",
+            localField: "department",
+            foreignField: "_id",
+            as: "departmentInfo",
+          },
+        },
+        {
+          $lookup: {
+            from: "positions",
+            localField: "position",
+            foreignField: "_id",
+            as: "positionInfo",
+          },
+        },
+        {
+          $addFields: {
+            department: { $arrayElemAt: ["$departmentInfo", 0] },
+            position: { $arrayElemAt: ["$positionInfo", 0] },
+          },
+        },
+        {
+          $project: {
+            departmentInfo: 0,
+            positionInfo: 0,
+          },
+        },
+      ])
+      .toArray();
+
+    res.json({
+      success: true,
+      count: employees.length,
+      data: employees,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Employees error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Positions
+app.get("/api/positions", async (req, res) => {
+  try {
+    const db = await connectDB();
+
+    const positions = await db
+      .collection("positions")
+      .find({ isActive: true })
+      .sort({ name: 1 })
+      .limit(100)
+      .toArray();
+
+    res.json({
+      success: true,
+      count: positions.length,
+      data: positions,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Positions error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Skills
+app.get("/api/skills", async (req, res) => {
+  try {
+    const db = await connectDB();
+
+    const skills = await db
+      .collection("skills")
+      .find({ isActive: true })
+      .sort({ name: 1 })
+      .limit(100)
+      .toArray();
+
+    res.json({
+      success: true,
+      count: skills.length,
+      data: skills,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Skills error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Services
+app.get("/api/services", async (req, res) => {
+  try {
+    const db = await connectDB();
+
+    const services = await db
+      .collection("services")
+      .find({ isActive: true })
+      .sort({ name: 1 })
+      .limit(100)
+      .toArray();
+
+    res.json({
+      success: true,
+      count: services.length,
+      data: services,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Services error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Projects
+app.get("/api/projects", async (req, res) => {
+  try {
+    const db = await connectDB();
+
+    const projects = await db
+      .collection("projects")
+      .find({ isActive: true })
+      .sort({ name: 1 })
+      .limit(100)
+      .toArray();
+
+    res.json({
+      success: true,
+      count: projects.length,
+      data: projects,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Projects error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Clients
+app.get("/api/clients", async (req, res) => {
+  try {
+    const db = await connectDB();
+
+    const clients = await db
+      .collection("clients")
+      .find({ isActive: true })
+      .sort({ name: 1 })
+      .limit(100)
+      .toArray();
+
+    res.json({
+      success: true,
+      count: clients.length,
+      data: clients,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Clients error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Finance
+app.get("/api/finance", async (req, res) => {
+  try {
+    const db = await connectDB();
+
+    const finance = await db
+      .collection("financialrecords")
+      .find({})
+      .sort({ date: -1 })
+      .limit(100)
+      .toArray();
+
+    res.json({
+      success: true,
+      count: finance.length,
+      data: finance,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Finance error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
       timestamp: new Date().toISOString(),
     });
   }
 });
 
 // ============================================
-// SIMPLE DIRECT API ENDPOINTS
+// GET BY ID ENDPOINTS
 // ============================================
 
-console.log("🚀 Initializing API routes...");
-
-// Helper to load a model
-function loadModel(modelName) {
-  const modelPath = path.join(
-    __dirname,
-    "..",
-    "src",
-    "models",
-    `${modelName}.js`
-  );
-
-  if (!fs.existsSync(modelPath)) {
-    console.error(`Model file not found: ${modelPath}`);
-    return null;
-  }
-
+// Get department by ID
+app.get("/api/departments/:id", async (req, res) => {
   try {
-    delete require.cache[require.resolve(modelPath)];
-    const Model = require(modelPath);
+    const db = await connectDB();
+    const ObjectId = mongoose.Types.ObjectId;
 
-    if (!Model || !Model.prototype || !Model.prototype.$isMongooseModel) {
-      console.error(`Invalid Mongoose model: ${modelName}`);
-      return null;
+    const department = await db
+      .collection("departments")
+      .findOne({ _id: new ObjectId(req.params.id), isActive: true });
+
+    if (!department) {
+      return res.status(404).json({
+        success: false,
+        error: "Department not found",
+        timestamp: new Date().toISOString(),
+      });
     }
 
-    return Model;
+    res.json({
+      success: true,
+      data: department,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
-    console.error(`Error loading model ${modelName}:`, error.message);
-    return null;
+    console.error("Department by ID error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
   }
-}
+});
 
-// Generic CRUD handler
-function createCRUDRouter(modelName, entityName) {
-  const router = express.Router();
+// Get employee by ID
+app.get("/api/employees/:id", async (req, res) => {
+  try {
+    const db = await connectDB();
+    const ObjectId = mongoose.Types.ObjectId;
 
-  // GET all
-  router.get("/", async (req, res) => {
-    try {
-      const Model = loadModel(modelName);
+    const employee = await db
+      .collection("employees")
+      .aggregate([
+        { $match: { _id: new ObjectId(req.params.id), isActive: true } },
+        {
+          $lookup: {
+            from: "departments",
+            localField: "department",
+            foreignField: "_id",
+            as: "departmentInfo",
+          },
+        },
+        {
+          $lookup: {
+            from: "positions",
+            localField: "position",
+            foreignField: "_id",
+            as: "positionInfo",
+          },
+        },
+        {
+          $lookup: {
+            from: "skills",
+            localField: "skills",
+            foreignField: "_id",
+            as: "skillInfo",
+          },
+        },
+        {
+          $addFields: {
+            department: { $arrayElemAt: ["$departmentInfo", 0] },
+            position: { $arrayElemAt: ["$positionInfo", 0] },
+            skills: "$skillInfo",
+          },
+        },
+        {
+          $project: {
+            departmentInfo: 0,
+            positionInfo: 0,
+            skillInfo: 0,
+          },
+        },
+      ])
+      .toArray();
 
-      if (!Model) {
-        return res.status(500).json({
-          success: false,
-          error: `Model ${modelName} not found`,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      // Pagination
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
-      const skip = (page - 1) * limit;
-
-      // Build query
-      const query = {};
-
-      // Only include isActive if the model has it
-      if (Model.schema.paths.isActive) {
-        query.isActive = true;
-      }
-
-      // Search
-      if (req.query.search) {
-        if (Model.schema.paths.name) {
-          query.name = { $regex: req.query.search, $options: "i" };
-        }
-      }
-
-      // Execute query
-      const [data, total] = await Promise.all([
-        Model.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }),
-        Model.countDocuments(query),
-      ]);
-
-      res.json({
-        success: true,
-        count: data.length,
-        total,
-        pages: Math.ceil(total / limit),
-        currentPage: page,
-        limit,
-        data,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error(`Error in ${entityName} GET:`, error.message);
-      res.status(500).json({
+    if (!employee || employee.length === 0) {
+      return res.status(404).json({
         success: false,
-        error: error.message,
+        error: "Employee not found",
         timestamp: new Date().toISOString(),
       });
     }
-  });
 
-  // GET by ID
-  router.get("/:id", async (req, res) => {
-    try {
-      const Model = loadModel(modelName);
-
-      if (!Model) {
-        return res.status(500).json({
-          success: false,
-          error: `Model ${modelName} not found`,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      const item = await Model.findById(req.params.id);
-
-      if (!item) {
-        return res.status(404).json({
-          success: false,
-          error: `${entityName} not found`,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      res.json({
-        success: true,
-        data: item,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error(`Error in ${entityName} GET by ID:`, error.message);
-      res.status(500).json({
-        success: false,
-        error: error.message,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  });
-
-  return router;
-}
-
-// ============================================
-// CREATE AND MOUNT ALL ROUTES
-// ============================================
-
-// Map of endpoints to models
-const endpoints = [
-  { path: "/api/departments", model: "Departments", name: "departments" },
-  { path: "/api/employees", model: "Employee", name: "employees" },
-  { path: "/api/clients", model: "Client", name: "clients" },
-  { path: "/api/projects", model: "Project", name: "projects" },
-  { path: "/api/positions", model: "Position", name: "positions" },
-  { path: "/api/skills", model: "Skill", name: "skills" },
-  { path: "/api/services", model: "Service", name: "services" },
-  { path: "/api/finance", model: "FinancialRecord", name: "financial records" },
-];
-
-console.log("\n🔄 Creating routes...");
-
-endpoints.forEach(({ path, model, name }) => {
-  const router = createCRUDRouter(model, name);
-  app.use(path, router);
-  console.log(`✅ Created ${path} (using ${model}.js)`);
+    res.json({
+      success: true,
+      data: employee[0],
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Employee by ID error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // ============================================
-// AUTH ROUTES
+// AUTH ENDPOINTS (SIMPLIFIED)
 // ============================================
 
-const authRouter = express.Router();
-
-authRouter.post("/login", async (req, res) => {
+// Login
+app.post("/api/auth/login", async (req, res) => {
   try {
-    const User = loadModel("User");
-
-    if (!User) {
-      return res.status(500).json({
-        success: false,
-        error: "User model not found",
-        timestamp: new Date().toISOString(),
-      });
-    }
-
+    const db = await connectDB();
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -385,7 +525,7 @@ authRouter.post("/login", async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email });
+    const user = await db.collection("users").findOne({ email });
 
     if (!user) {
       return res.status(401).json({
@@ -396,9 +536,7 @@ authRouter.post("/login", async (req, res) => {
     }
 
     // Simplified password check
-    const isValid = user.password === password;
-
-    if (!isValid) {
+    if (user.password !== password) {
       return res.status(401).json({
         success: false,
         error: "Invalid credentials",
@@ -426,23 +564,24 @@ authRouter.post("/login", async (req, res) => {
   }
 });
 
-authRouter.post("/register", async (req, res) => {
+// Get current user
+app.get("/api/auth/me", async (req, res) => {
   try {
-    const User = loadModel("User");
+    const db = await connectDB();
 
-    if (!User) {
-      return res.status(500).json({
+    // Simplified - you should implement proper auth
+    const user = await db.collection("users").findOne({});
+
+    if (!user) {
+      return res.status(404).json({
         success: false,
-        error: "User model not found",
+        error: "User not found",
         timestamp: new Date().toISOString(),
       });
     }
 
-    const user = await User.create(req.body);
-
-    res.status(201).json({
+    res.json({
       success: true,
-      message: "User registered successfully",
       user: {
         id: user._id,
         name: user.name,
@@ -451,7 +590,7 @@ authRouter.post("/register", async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Registration error:", error.message);
+    console.error("Get user error:", error.message);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -460,87 +599,62 @@ authRouter.post("/register", async (req, res) => {
   }
 });
 
-authRouter.get("/me", async (req, res) => {
-  res.json({
-    success: true,
-    user: {
-      id: "1",
-      name: "Test User",
-      email: "test@example.com",
-    },
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.use("/api/auth", authRouter);
-console.log("✅ Created /api/auth routes");
-
 // ============================================
-// TEST ENDPOINTS
+// DEBUG ENDPOINTS
 // ============================================
 
-// Test database connection
-app.get("/api/test-connection", async (req, res) => {
-  const startTime = Date.now();
-
+// List all collections
+app.get("/api/debug/collections", async (req, res) => {
   try {
-    await connectDB();
+    const db = await connectDB();
+    const collections = await db.listCollections().toArray();
 
-    const endTime = Date.now();
-    const connectionTime = endTime - startTime;
+    const collectionInfo = [];
 
-    // Test a simple query
-    const testStart = Date.now();
-    const collections = await mongoose.connection.db
-      .listCollections()
-      .toArray();
-    const testEnd = Date.now();
-    const queryTime = testEnd - testStart;
+    for (const coll of collections) {
+      const count = await db.collection(coll.name).countDocuments();
+      collectionInfo.push({
+        name: coll.name,
+        count: count,
+      });
+    }
 
     res.json({
       success: true,
-      message: "Database connection successful",
-      connectionTime: `${connectionTime}ms`,
-      queryTime: `${queryTime}ms`,
-      readyState: mongoose.connection.readyState,
-      collections: collections.map((c) => c.name),
+      collections: collectionInfo,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    const endTime = Date.now();
-    const connectionTime = endTime - startTime;
-
-    console.error("Connection test failed:", error.message);
     res.status(500).json({
       success: false,
       error: error.message,
-      connectionTime: `${connectionTime}ms`,
-      readyState: mongoose.connection.readyState,
       timestamp: new Date().toISOString(),
     });
   }
 });
 
-// Quick data test
-app.get("/api/test-data", async (req, res) => {
+// Test database
+app.get("/api/debug/test-db", async (req, res) => {
   try {
+    const db = await connectDB();
+
     // Test multiple collections
-    const Departments = loadModel("Departments");
-    const Employees = loadModel("Employee");
-
-    if (!Departments || !Employees) {
-      throw new Error("Models not loaded");
-    }
-
-    const [deptCount, empCount] = await Promise.all([
-      Departments.countDocuments(),
-      Employees.countDocuments(),
+    const [departments, employees, positions, skills] = await Promise.all([
+      db.collection("departments").countDocuments(),
+      db.collection("employees").countDocuments(),
+      db.collection("positions").countDocuments(),
+      db.collection("skills").countDocuments(),
     ]);
 
     res.json({
       success: true,
-      departments: deptCount,
-      employees: empCount,
+      database: "connected",
+      counts: {
+        departments,
+        employees,
+        positions,
+        skills,
+      },
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -550,16 +664,6 @@ app.get("/api/test-data", async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   }
-});
-
-// Simple test endpoint
-app.get("/api/test", (req, res) => {
-  res.json({
-    success: true,
-    message: "API is working!",
-    timestamp: new Date().toISOString(),
-    endpoints: endpoints.map((e) => e.path),
-  });
 });
 
 // ============================================
@@ -567,19 +671,7 @@ app.get("/api/test", (req, res) => {
 // ============================================
 
 app.use((req, res, next) => {
-  const startTime = Date.now();
-
-  res.on("finish", () => {
-    const endTime = Date.now();
-    const duration = endTime - startTime;
-
-    console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${
-        res.statusCode
-      } (${duration}ms)`
-    );
-  });
-
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
   next();
 });
 
@@ -589,15 +681,10 @@ app.use((req, res, next) => {
 
 app.use((err, req, res, next) => {
   console.error("❌ Error:", err.message);
-  console.error("Stack:", err.stack);
 
-  const statusCode = err.statusCode || 500;
-  const message = err.message || "Internal server error";
-
-  res.status(statusCode).json({
+  res.status(500).json({
     success: false,
-    error: message,
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    error: err.message || "Internal server error",
     timestamp: new Date().toISOString(),
   });
 });
@@ -612,18 +699,19 @@ app.use((req, res) => {
       "/",
       "/health",
       "/api/test",
-      "/api/test-connection",
-      "/api/test-data",
+      "/api/debug/collections",
+      "/api/debug/test-db",
       "/api/auth/login",
-      "/api/auth/register",
       "/api/auth/me",
       "/api/departments",
+      "/api/departments/:id",
       "/api/employees",
-      "/api/clients",
-      "/api/projects",
+      "/api/employees/:id",
       "/api/positions",
       "/api/skills",
       "/api/services",
+      "/api/projects",
+      "/api/clients",
       "/api/finance",
     ],
   });
