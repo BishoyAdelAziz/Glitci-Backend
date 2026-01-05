@@ -1,18 +1,25 @@
-// api/index.js
+// api/index.js - UPDATED FOR YOUR STRUCTURE
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
-const swaggerUi = require("swagger-ui-express");
-const YAML = require("yamljs");
 const path = require("path");
+require("dotenv").config();
 
 const app = express();
 
+// 🔴 CRITICAL FIX: Trust proxy for Vercel
+app.set("trust proxy", 1);
+
 // Security + parsing
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+  })
+);
+
 app.use(
   cors({
     origin: process.env.CLIENT_URL || "http://localhost:3000",
@@ -24,14 +31,21 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+// Rate limiting - FIXED for Vercel
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: "Too many requests from this IP, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Use X-Forwarded-For header in Vercel
+    return req.headers["x-forwarded-for"] || req.ip;
+  },
+});
+
+// Apply rate limiting to API routes
+app.use("/api/", limiter);
 
 // Cache mongoose connection
 let cached = global.mongoose;
@@ -39,59 +53,132 @@ async function connectDB() {
   if (cached && cached.conn) return cached.conn;
   if (!cached) cached = global.mongoose = { conn: null, promise: null };
   if (!cached.promise) {
+    const options = {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+    };
     cached.promise = mongoose
-      .connect(process.env.MONGODB_URI)
-      .then((conn) => conn);
+      .connect(process.env.MONGODB_URI, options)
+      .then((mongoose) => mongoose);
   }
   cached.conn = await cached.promise;
   return cached.conn;
 }
 
-// Swagger - wrap in try-catch
-try {
-  const swaggerDoc = YAML.load(path.join(__dirname, "../openapi.yaml"));
-  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc));
-} catch (e) {
-  console.error("Swagger load failed:", e.message);
-}
-
-// Health check (moved before routes so it's always accessible)
-app.get("/api/health", async (req, res) => {
-  try {
-    await connectDB();
-    res.json({ ok: true, message: "Connected to DB" });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// Routes
-app.use("/api/auth", require("../src/routes/auth"));
-app.use("/api/services", require("../src/routes/serviceRoutes"));
-app.use("/api/clients", require("../src/routes/clientRoutes"));
-app.use("/api/employees", require("../src/routes/employeeRoutes"));
-app.use("/api/projects", require("../src/routes/projectRoutes"));
-app.use("/api/analytics", require("../src/routes/analyticsRoutes"));
-app.use("/api/departments", require("../src/routes/departmentRoutes"));
-app.use("/api/positions", require("../src/routes/positionRoutes"));
-app.use("/api/skills", require("../src/routes/skillRoutes"));
-app.use("/api/finance", require("../src/routes/financeRoutes"));
-
-// Error handler - inline instead of requiring external file
-app.use((err, req, res, next) => {
-  console.error("Error:", err.message);
-  res.status(err.status || 500).json({
-    success: false,
-    error: err.message || "Internal server error",
+// Root endpoint for Vercel health checks
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "Glitci Backend API",
+    version: "1.0.0",
+    timestamp: new Date().toISOString(),
+    endpoints: [
+      "/health",
+      "/api/auth",
+      "/api/clients",
+      "/api/employees",
+      "/api/projects",
+      "/api/departments",
+      "/api/positions",
+      "/api/skills",
+      "/api/services",
+      "/api/finance",
+    ],
   });
 });
 
-// 404 handler
+// Health check endpoint
+app.get("/health", async (req, res) => {
+  try {
+    await connectDB();
+    res.json({
+      success: true,
+      status: "healthy",
+      database: "connected",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      status: "unhealthy",
+      database: "disconnected",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// 🔴 FIXED: Correct route imports from src/routes
+// Load routes with error handling
+const loadRoute = (routePath, routeName) => {
+  try {
+    const route = require(routePath);
+    return route;
+  } catch (error) {
+    console.warn(`Warning: ${routeName} route not found at ${routePath}`);
+    // Return a placeholder router
+    const router = express.Router();
+    router.all("*", (req, res) => {
+      res.status(501).json({
+        success: false,
+        message: `${routeName} routes not implemented yet`,
+        path: req.path,
+      });
+    });
+    return router;
+  }
+};
+
+// Load routes from src/routes
+app.use("/api/auth", loadRoute("../src/routes/auth", "auth"));
+app.use("/api/clients", loadRoute("../src/routes/clientRoutes", "clients"));
+app.use(
+  "/api/employees",
+  loadRoute("../src/routes/employeeRoutes", "employees")
+);
+app.use("/api/projects", loadRoute("../src/routes/projectRoutes", "projects"));
+app.use(
+  "/api/departments",
+  loadRoute("../src/routes/departmentRoutes", "departments")
+);
+app.use(
+  "/api/positions",
+  loadRoute("../src/routes/positionRoutes", "positions")
+);
+app.use("/api/skills", loadRoute("../src/routes/skillRoutes", "skills"));
+app.use("/api/services", loadRoute("../src/routes/serviceRoutes", "services"));
+app.use("/api/finance", loadRoute("../src/routes/financeRoutes", "finance"));
+
+// Optional analytics route
+try {
+  app.use("/api/analytics", require("../src/routes/analyticsRoutes"));
+} catch (e) {
+  console.log("Analytics routes not found, skipping...");
+}
+
+// Error handler
+const errorHandler = require("../src/middleware/errorHandler");
+app.use(errorHandler);
+
+// 404 handler - must be last
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    error: "Route not found",
-    path: req.path,
+    error: `Route not found: ${req.method} ${req.originalUrl}`,
+    availableRoutes: [
+      "/",
+      "/health",
+      "/api/auth/*",
+      "/api/clients/*",
+      "/api/employees/*",
+      "/api/projects/*",
+      "/api/departments/*",
+      "/api/positions/*",
+      "/api/skills/*",
+      "/api/services/*",
+      "/api/finance/*",
+    ],
   });
 });
 
