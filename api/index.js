@@ -1,4 +1,4 @@
-// api/index.js - FINAL FIX FOR MONGOOSE TIMEOUT
+// api/index.js - FINAL WORKING VERSION
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -71,18 +71,16 @@ if (!cached) {
 async function connectDB() {
   // If already connected, return the connection
   if (cached.conn) {
-    console.log("✅ Using cached MongoDB connection");
     return cached.conn;
   }
 
   // If connecting, wait for the promise
   if (cached.promise) {
-    console.log("⏳ Waiting for existing connection promise");
     cached.conn = await cached.promise;
     return cached.conn;
   }
 
-  console.log("🔌 Establishing new MongoDB connection...");
+  console.log("🔌 Establishing MongoDB connection...");
 
   // Configure mongoose for Vercel/serverless
   mongoose.set("strictQuery", false);
@@ -90,10 +88,10 @@ async function connectDB() {
   const options = {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 10000, // Reduced from 30000
-    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
-    maxPoolSize: 10, // Maintain up to 10 socket connections
-    minPoolSize: 1, // Maintain at least 1 socket connection
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+    maxPoolSize: 10,
+    minPoolSize: 1,
   };
 
   cached.promise = mongoose
@@ -104,7 +102,7 @@ async function connectDB() {
     })
     .catch((err) => {
       console.error("❌ MongoDB connection error:", err.message);
-      cached.promise = null; // Reset promise on error
+      cached.promise = null;
       throw err;
     });
 
@@ -119,7 +117,7 @@ async function connectDB() {
 }
 
 // ============================================
-// HEALTH CHECK WITH CONNECTION TESTING
+// HEALTH CHECK ENDPOINTS
 // ============================================
 
 // Root endpoint for Vercel health checks
@@ -131,14 +129,14 @@ app.get("/", (req, res) => {
     timestamp: new Date().toISOString(),
     endpoints: [
       "/health",
-      "/api/auth",
-      "/api/clients",
-      "/api/employees",
-      "/api/projects",
+      "/api/test-connection",
       "/api/departments",
+      "/api/employees",
       "/api/positions",
       "/api/skills",
       "/api/services",
+      "/api/projects",
+      "/api/clients",
       "/api/finance",
     ],
   });
@@ -159,7 +157,7 @@ app.get("/health", async (req, res) => {
       status: "healthy",
       database: "connected",
       connectionTime: `${connectionTime}ms`,
-      readyState: readyState, // 1 = connected, 2 = connecting, 3 = disconnecting, 0 = disconnected
+      readyState: readyState,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -175,18 +173,16 @@ app.get("/health", async (req, res) => {
 });
 
 // ============================================
-// SIMPLE ROUTE HANDLERS WITH CONNECTION MANAGEMENT
+// DB CONNECTION MIDDLEWARE (FIXED)
 // ============================================
 
-console.log("🚀 Initializing API routes...");
-
-// Middleware to ensure DB connection for all API routes
-app.use("/api/*", async (req, res, next) => {
+// FIX: Use regex pattern instead of wildcard
+app.use(/^\/api\//, async (req, res, next) => {
   try {
     await connectDB();
     next();
   } catch (error) {
-    console.error("Database connection failed in middleware:", error.message);
+    console.error("Database connection failed:", error.message);
     res.status(503).json({
       success: false,
       error: "Database connection failed",
@@ -197,8 +193,10 @@ app.use("/api/*", async (req, res, next) => {
 });
 
 // ============================================
-// DIRECT API ENDPOINTS (NO ROUTE FILES)
+// SIMPLE DIRECT API ENDPOINTS
 // ============================================
+
+console.log("🚀 Initializing API routes...");
 
 // Helper to load a model
 function loadModel(modelName) {
@@ -216,7 +214,6 @@ function loadModel(modelName) {
   }
 
   try {
-    // Clear require cache
     delete require.cache[require.resolve(modelPath)];
     const Model = require(modelPath);
 
@@ -233,10 +230,10 @@ function loadModel(modelName) {
 }
 
 // Generic CRUD handler
-function createCRUDRouter(entityName, modelName) {
+function createCRUDRouter(modelName, entityName) {
   const router = express.Router();
 
-  // GET all with pagination
+  // GET all
   router.get("/", async (req, res) => {
     try {
       const Model = loadModel(modelName);
@@ -269,22 +266,10 @@ function createCRUDRouter(entityName, modelName) {
         }
       }
 
-      // Execute query with timeout protection
-      const findPromise = Model.find(query)
-        .skip(skip)
-        .limit(limit)
-        .sort({ createdAt: -1 });
-
-      const countPromise = Model.countDocuments(query);
-
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Database query timeout")), 8000);
-      });
-
-      const [data, total] = await Promise.race([
-        Promise.all([findPromise, countPromise]),
-        timeoutPromise,
+      // Execute query
+      const [data, total] = await Promise.all([
+        Model.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }),
+        Model.countDocuments(query),
       ]);
 
       res.json({
@@ -325,7 +310,7 @@ function createCRUDRouter(entityName, modelName) {
       if (!item) {
         return res.status(404).json({
           success: false,
-          error: `${modelName} not found`,
+          error: `${entityName} not found`,
           timestamp: new Date().toISOString(),
         });
       }
@@ -367,13 +352,13 @@ const endpoints = [
 console.log("\n🔄 Creating routes...");
 
 endpoints.forEach(({ path, model, name }) => {
-  const router = createCRUDRouter(name, model);
+  const router = createCRUDRouter(model, name);
   app.use(path, router);
   console.log(`✅ Created ${path} (using ${model}.js)`);
 });
 
 // ============================================
-// AUTH ROUTES (SPECIAL HANDLING)
+// AUTH ROUTES
 // ============================================
 
 const authRouter = express.Router();
@@ -392,7 +377,6 @@ authRouter.post("/login", async (req, res) => {
 
     const { email, password } = req.body;
 
-    // Basic validation
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -401,7 +385,6 @@ authRouter.post("/login", async (req, res) => {
       });
     }
 
-    // Find user
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -412,7 +395,7 @@ authRouter.post("/login", async (req, res) => {
       });
     }
 
-    // Check password (simplified - you should use bcrypt)
+    // Simplified password check
     const isValid = user.password === password;
 
     if (!isValid) {
@@ -478,7 +461,6 @@ authRouter.post("/register", async (req, res) => {
 });
 
 authRouter.get("/me", async (req, res) => {
-  // Simplified - you should implement proper auth
   res.json({
     success: true,
     user: {
@@ -494,23 +476,15 @@ app.use("/api/auth", authRouter);
 console.log("✅ Created /api/auth routes");
 
 // ============================================
-// TEST AND DEBUG ENDPOINTS
+// TEST ENDPOINTS
 // ============================================
 
-// Test database connection with timeout
+// Test database connection
 app.get("/api/test-connection", async (req, res) => {
   const startTime = Date.now();
 
   try {
-    // Set a timeout for the entire operation
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(
-        () => reject(new Error("Connection timeout after 15s")),
-        15000
-      );
-    });
-
-    await Promise.race([connectDB(), timeoutPromise]);
+    await connectDB();
 
     const endTime = Date.now();
     const connectionTime = endTime - startTime;
@@ -550,7 +524,7 @@ app.get("/api/test-connection", async (req, res) => {
 // Quick data test
 app.get("/api/test-data", async (req, res) => {
   try {
-    // Test multiple collections quickly
+    // Test multiple collections
     const Departments = loadModel("Departments");
     const Employees = loadModel("Employee");
 
@@ -578,45 +552,13 @@ app.get("/api/test-data", async (req, res) => {
   }
 });
 
-// List all available endpoints
-app.get("/api/endpoints", (req, res) => {
-  const endpointsList = [
-    { path: "/health", method: "GET", description: "Health check" },
-    {
-      path: "/api/test-connection",
-      method: "GET",
-      description: "Test DB connection",
-    },
-    { path: "/api/test-data", method: "GET", description: "Test data counts" },
-    { path: "/api/auth/login", method: "POST", description: "User login" },
-    {
-      path: "/api/auth/register",
-      method: "POST",
-      description: "User registration",
-    },
-    { path: "/api/auth/me", method: "GET", description: "Get current user" },
-    {
-      path: "/api/departments",
-      method: "GET",
-      description: "Get all departments",
-    },
-    { path: "/api/employees", method: "GET", description: "Get all employees" },
-    { path: "/api/clients", method: "GET", description: "Get all clients" },
-    { path: "/api/projects", method: "GET", description: "Get all projects" },
-    { path: "/api/positions", method: "GET", description: "Get all positions" },
-    { path: "/api/skills", method: "GET", description: "Get all skills" },
-    { path: "/api/services", method: "GET", description: "Get all services" },
-    {
-      path: "/api/finance",
-      method: "GET",
-      description: "Get all financial records",
-    },
-  ];
-
+// Simple test endpoint
+app.get("/api/test", (req, res) => {
   res.json({
     success: true,
-    endpoints: endpointsList,
+    message: "API is working!",
     timestamp: new Date().toISOString(),
+    endpoints: endpoints.map((e) => e.path),
   });
 });
 
@@ -627,7 +569,6 @@ app.get("/api/endpoints", (req, res) => {
 app.use((req, res, next) => {
   const startTime = Date.now();
 
-  // Log after response is sent
   res.on("finish", () => {
     const endTime = Date.now();
     const duration = endTime - startTime;
@@ -668,11 +609,14 @@ app.use((req, res) => {
     error: `Route not found: ${req.method} ${req.originalUrl}`,
     timestamp: new Date().toISOString(),
     availableEndpoints: [
+      "/",
       "/health",
+      "/api/test",
       "/api/test-connection",
       "/api/test-data",
-      "/api/endpoints",
-      "/api/auth/*",
+      "/api/auth/login",
+      "/api/auth/register",
+      "/api/auth/me",
       "/api/departments",
       "/api/employees",
       "/api/clients",
@@ -686,20 +630,7 @@ app.use((req, res) => {
 });
 
 // ============================================
-// EXPORT AND CLEANUP
+// EXPORT
 // ============================================
 
-// Close MongoDB connection on Vercel shutdown
-if (process.env.VERCEL) {
-  process.on("SIGTERM", async () => {
-    console.log("SIGTERM received, closing MongoDB connection...");
-    if (mongoose.connection.readyState === 1) {
-      await mongoose.connection.close();
-      console.log("MongoDB connection closed");
-    }
-    process.exit(0);
-  });
-}
-
-// Export the app
 module.exports = app;
