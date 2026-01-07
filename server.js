@@ -27,12 +27,35 @@ app.use(
 // CORS - allow your frontend
 app.use(
   cors({
-    origin: [
-      "https://glitciapp.vercel.app",
-      "https://glitciapp-*.vercel.app",
-      "http://localhost:3000",
-      "http://localhost:3001",
-    ],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      // List of allowed origins
+      const allowedOrigins = [
+        "https://glitciapp.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:3001",
+      ];
+
+      // Check if the origin is in the allowed list
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        return callback(null, true);
+      }
+
+      // Check if origin is a Vercel preview deployment
+      // This matches patterns like: https://glitciapp-*.vercel.app
+      // AND also: https://glitciapp-*-bishoys-projects-*.vercel.app
+      const vercelRegex =
+        /^https:\/\/(glitciapp|glitciapp-.*)(-bishoys-projects-.*)?\.vercel\.app$/;
+
+      if (vercelRegex.test(origin)) {
+        return callback(null, true);
+      }
+
+      // Origin not allowed
+      callback(new Error(`CORS not allowed for origin: ${origin}`));
+    },
     credentials: true,
     optionsSuccessStatus: 200,
   })
