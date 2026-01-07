@@ -85,12 +85,12 @@ async function connectDB() {
     const options = {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 30000,
-      maxPoolSize: 5,
-      minPoolSize: 0,
-      // Add this line:
-      serverless: true, // or `retryWrites: true` for older drivers
+      serverSelectionTimeoutMS: 15000, // Increased to 15 seconds
+      socketTimeoutMS: 45000, // Increased to 45 seconds
+      maxPoolSize: 5, // Reduced for serverless (important!)
+      minPoolSize: 1,
+      maxIdleTimeMS: 60000, // Close idle connections after 60 seconds
+      heartbeatFrequencyMS: 10000, // Send heartbeat every 10 seconds
     };
 
     cached.promise = mongoose
