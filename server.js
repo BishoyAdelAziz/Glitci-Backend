@@ -11,11 +11,24 @@ const authRoutes = require("./src/routes/auth");
 const errorHandler = require("./src/middleware/errorHandler");
 const swaggerUi = require("swagger-ui-express");
 const YAML = require("yamljs");
-const swaggerDoc = YAML.load("./openapi.yaml");
+const path = require("path");
+const swaggerDoc = YAML.load(path.join(__dirname, "openapi.yaml"));
 
 const app = express();
 // Swagger UI
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc));
+const CSS_URL =
+  "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.0.0/swagger-ui.min.css";
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerDoc, {
+    customCssUrl: CSS_URL,
+    customJs: [
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.0.0/swagger-ui-bundle.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.0.0/swagger-ui-standalone-preset.js",
+    ],
+  })
+);
 // Security middleware
 app.use(helmet());
 app.use(
@@ -44,6 +57,10 @@ mongoose
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
+app.get("/", (req, res) => {
+  res.send("API is running...");
+});
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/services", require("./src/routes/serviceRoutes"));
@@ -67,7 +84,7 @@ const server = app.listen(PORT, () => {
 process.on("unhandledRejection", (err) => {
   console.log("UNHANDLED REJECTION! 💥 Shutting down...");
   console.log(err.name, err.message);
-  server.close(() => {
-    process.exit(1);
-  });
+  server.close(() => {});
 });
+
+module.exports = app;
